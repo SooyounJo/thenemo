@@ -23,6 +23,9 @@ export default function Home() {
   const floorRef = useRef<THREE.Mesh | null>(null);
   const spotRef = useRef<THREE.SpotLight | null>(null);
   const spotTargetRef = useRef<THREE.Object3D | null>(null);
+  const spotHelperRef = useRef<THREE.SpotLightHelper | null>(null);
+  const orbitAngleRef = useRef<number>(0);
+  const lastTimeRef = useRef<number>(typeof performance !== "undefined" ? performance.now() : 0);
 
   // Create a soft radial white falloff texture to project as spotlight map (gobo)
   function createBlobGradientTexture(size = 1024): THREE.CanvasTexture {
@@ -83,6 +86,15 @@ export default function Home() {
     targetY,
     targetZ,
     lightColor,
+    lightPenumbra,
+    shadowBias,
+    showLightHelper,
+    orbitEnabled,
+    orbitRadius,
+    orbitHeight,
+    orbitSpeed,
+    orbitCenterX,
+    orbitCenterZ,
   } = useControls({
     Camera: folder({
       camX: { value: -3.2, min: -50, max: 50, step: 0.1 },
@@ -113,7 +125,16 @@ export default function Home() {
       targetX: { value: 0.0, min: -50, max: 50, step: 0.1 },
       targetY: { value: 1.0, min: -10, max: 50, step: 0.1 },
       targetZ: { value: 0.7, min: -50, max: 50, step: 0.1 },
-      lightColor: { value: "#fff59d" },
+      lightColor: { value: "#d8d4ba" },
+      lightPenumbra: { value: 1, min: 0, max: 1, step: 0.01 },
+      shadowBias: { value: -0.003, min: -0.02, max: 0.02, step: 0.0001 },
+      showLightHelper: { value: false },
+      orbitEnabled: { value: true },
+      orbitRadius: { value: 2.5, min: 0.1, max: 20, step: 0.1 },
+      orbitHeight: { value: 3.8, min: 0, max: 50, step: 0.1 },
+      orbitSpeed: { value: 0.5, min: -5, max: 5, step: 0.01 },
+      orbitCenterX: { value: 0, min: -10, max: 10, step: 0.1 },
+      orbitCenterZ: { value: 0, min: -10, max: 10, step: 0.1 },
     }),
   });
 
@@ -241,11 +262,13 @@ export default function Home() {
         // Apply initial Leva floor scale
         floor.scale.set(floorSize, 1, floorSize);
         // Spotlight with projected texture (gobo)
-        const spot = new THREE.SpotLight(new THREE.Color(lightColor), lightIntensity, lightDistance, lightAngle, 1, lightDecay);
+        const spot = new THREE.SpotLight(new THREE.Color(lightColor), lightIntensity, lightDistance, lightAngle, lightPenumbra, lightDecay);
         spot.position.set(lightX, lightY, lightZ);
         spot.castShadow = true;
         spot.shadow.mapSize.set(1024, 1024);
-        spot.shadow.bias = -0.003;
+        spot.shadow.bias = shadowBias;
+        spot.shadow.camera.near = 0.5;
+        spot.shadow.camera.far = Math.max(10, lightDistance > 0 ? lightDistance : 100);
         const gobo = createBlobGradientTexture(1024);
         gobo.flipY = false;
         gobo.needsUpdate = true;
@@ -258,6 +281,11 @@ export default function Home() {
         scene.add(spot);
         spotRef.current = spot;
         spotTargetRef.current = target;
+        // Optional helper
+        const helper = new THREE.SpotLightHelper(spot);
+        helper.visible = showLightHelper;
+        scene.add(helper);
+        spotHelperRef.current = helper;
       },
       undefined,
       (error: any) => {
@@ -270,6 +298,26 @@ export default function Home() {
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
       controls.update();
+      // Update helper when present
+      if (spotHelperRef.current) {
+        spotHelperRef.current.update();
+      }
+      // Orbit spotlight around the scene center if enabled
+      if (orbitEnabled && spotRef.current) {
+        const now = performance.now();
+        const dt = (now - lastTimeRef.current) / 1000;
+        lastTimeRef.current = now;
+        orbitAngleRef.current += orbitSpeed * dt;
+        const a = orbitAngleRef.current;
+        const x = orbitCenterX + Math.cos(a) * orbitRadius;
+        const z = orbitCenterZ + Math.sin(a) * orbitRadius;
+        const y = orbitHeight;
+        spotRef.current.position.set(x, y, z);
+        spotRef.current.updateMatrixWorld();
+      } else {
+        // Keep time reference fresh to avoid jumps when re-enabled
+        lastTimeRef.current = performance.now();
+      }
       renderer.render(scene, camera);
     };
     animate();
@@ -374,6 +422,8 @@ export default function Home() {
     spot.angle = lightAngle;
     spot.distance = lightDistance;
     spot.decay = lightDecay;
+    spot.penumbra = lightPenumbra;
+    spot.shadow.bias = shadowBias;
     spot.position.set(lightX, lightY, lightZ);
     if (target) {
       target.position.set(targetX, targetY, targetZ);
@@ -381,7 +431,11 @@ export default function Home() {
       spot.target = target;
     }
     spot.updateMatrixWorld();
-  }, [lightColor, lightIntensity, lightAngle, lightDistance, lightDecay, lightX, lightY, lightZ, targetX, targetY, targetZ]);
+    if (spotHelperRef.current) {
+      spotHelperRef.current.visible = showLightHelper;
+      spotHelperRef.current.update();
+    }
+  }, [lightColor, lightIntensity, lightAngle, lightDistance, lightDecay, lightPenumbra, shadowBias, showLightHelper, lightX, lightY, lightZ, targetX, targetY, targetZ]);
 
   return (
     <>
