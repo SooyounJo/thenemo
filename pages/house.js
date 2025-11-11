@@ -32,6 +32,9 @@ export default function HouseViewerPage() {
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    // Keep horizontal rotation only; no zoom/pan so the model size stays fixed
+    controls.enableZoom = false;
+    controls.enablePan = false;
     controls.target.set(0, 0, 0);
 
     // Lighting
@@ -77,7 +80,28 @@ export default function HouseViewerPage() {
         camera.updateProjectionMatrix();
 
         controls.target.set(0, 0, 0);
+        // Lock distance and vertical angle so size/tilt remain fixed,
+        // while allowing left-right (azimuthal) rotation.
+        controls.minDistance = distance;
+        controls.maxDistance = distance;
+        const initialPolar = controls.getPolarAngle();
+        controls.minPolarAngle = initialPolar;
+        controls.maxPolarAngle = initialPolar;
         controls.update();
+
+        // Add a floor under the model
+        const floorY = -size.y / 2; // model base after centering
+        const floorSize = Math.max(size.x, size.z) * 10;
+        const floorGeometry = new THREE.PlaneGeometry(floorSize, floorSize);
+        const floorMaterial = new THREE.MeshStandardMaterial({
+          color: 0x16181d,
+          roughness: 1,
+          metalness: 0
+        });
+        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = floorY;
+        scene.add(floor);
       },
       undefined,
       (error) => {
