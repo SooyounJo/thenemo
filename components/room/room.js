@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 
 export default function Room() {
@@ -16,6 +17,9 @@ export default function Room() {
   const spotRef = useRef(null);
   const spotTargetRef = useRef(null);
   const spotHelperRef = useRef(null);
+  const skyRef = useRef(null);
+  const sunRef = useRef(null);
+  const pointRef = useRef(null);
   const orbitAngleRef = useRef(0);
   const lastTimeRef = useRef(typeof performance !== "undefined" ? performance.now() : 0);
 
@@ -95,7 +99,7 @@ export default function Room() {
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Environment (EXR) background
+    // Re-introduce EXR environment at full strength (as background and lighting)
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     pmremGenerator.compileEquirectangularShader();
     new EXRLoader().load(
@@ -133,7 +137,7 @@ export default function Room() {
 
     const loader = new GLTFLoader();
     loader.load(
-      "/3d/mainhome3.glb",
+      "/3d/mainroom.glb",
       (gltf) => {
         const modelRoot = gltf.scene || (gltf.scenes && gltf.scenes[0]);
         if (!modelRoot) return;
@@ -144,14 +148,14 @@ export default function Room() {
           if (mesh && mesh.isMesh) {
             mesh.castShadow = true;
             mesh.receiveShadow = true;
-            // EXR environment lighting contribution at ~20%
+            // EXR environment lighting contribution at 100%
             const material = mesh.material;
             if (Array.isArray(material)) {
               material.forEach((m) => {
-                if (m && "envMapIntensity" in m) m.envMapIntensity = 0.2;
+                if (m && "envMapIntensity" in m) m.envMapIntensity = 1;
               });
             } else if (material && "envMapIntensity" in material) {
-              material.envMapIntensity = 0.2;
+              material.envMapIntensity = 1;
             }
           }
         });
@@ -190,6 +194,13 @@ export default function Room() {
         helper.visible = false;
         scene.add(helper);
         spotHelperRef.current = helper;
+
+        // Soft point light inside the room (weak, no shadows for performance)
+        const point = new THREE.PointLight(0xfff7e6, 0.5, 6, 2);
+        point.position.set(0.2, 1.2, -0.3);
+        point.castShadow = false;
+        scene.add(point);
+        pointRef.current = point;
       },
       undefined,
       (error) => {
@@ -242,6 +253,21 @@ export default function Room() {
       }
       if (scene.environment && scene.environment.dispose) {
         scene.environment.dispose();
+      }
+      if (skyRef.current) {
+        const s = skyRef.current;
+        if (s.geometry && s.geometry.dispose) s.geometry.dispose();
+        if (s.material && s.material.dispose) s.material.dispose();
+        scene.remove(s);
+        skyRef.current = null;
+      }
+      if (sunRef.current) {
+        scene.remove(sunRef.current);
+        sunRef.current = null;
+      }
+      if (pointRef.current) {
+        scene.remove(pointRef.current);
+        pointRef.current = null;
       }
       scene.traverse((obj) => {
         const mesh = obj;
@@ -350,6 +376,47 @@ export default function Room() {
             <input type="checkbox" checked={lockTilt} onChange={(e) => setLockTilt(e.target.checked)} />
             Lock Tilt
           </label>
+        </div>
+
+        {/* Camera position quick view */}
+        <div style={{ marginTop: 12, fontSize: 12, color: "#bfc3ca" }}>
+          Pos: X {camX.toFixed(2)} Y {camY.toFixed(2)} Z {camZ.toFixed(2)}
+        </div>
+
+        {/* Camera move buttons */}
+        <div style={{ marginTop: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "40px 40px 40px", gap: 8, justifyContent: "start" }}>
+            <div />
+            <button
+              onClick={() => setCamY((v) => v + 0.5)}
+              style={{ width: 40, height: 32, borderRadius: 6, border: "1px solid #23262d", background: "#111318", color: "#e5e7eb", cursor: "pointer" }}
+              title="Up"
+            >
+              ↑
+            </button>
+            <div />
+            <button
+              onClick={() => setCamX((v) => v - 0.5)}
+              style={{ width: 40, height: 32, borderRadius: 6, border: "1px solid #23262d", background: "#111318", color: "#e5e7eb", cursor: "pointer" }}
+              title="Left"
+            >
+              ←
+            </button>
+            <button
+              onClick={() => setCamY((v) => Math.max(-50, v - 0.5))}
+              style={{ width: 40, height: 32, borderRadius: 6, border: "1px solid #23262d", background: "#111318", color: "#e5e7eb", cursor: "pointer" }}
+              title="Down"
+            >
+              ↓
+            </button>
+            <button
+              onClick={() => setCamX((v) => v + 0.5)}
+              style={{ width: 40, height: 32, borderRadius: 6, border: "1px solid #23262d", background: "#111318", color: "#e5e7eb", cursor: "pointer" }}
+              title="Right"
+            >
+              →
+            </button>
+          </div>
         </div>
 
         {/* Presets */}
