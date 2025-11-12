@@ -123,17 +123,17 @@ export default function Room() {
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8d8d8d, 0.25);
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8d8d8d, 0.15);
     hemiLight.position.set(0, 20, 0);
     scene.add(hemiLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.25);
     dirLight.position.set(5, 10, 7.5);
     dirLight.castShadow = false;
     scene.add(dirLight);
 
     const loader = new GLTFLoader();
     loader.load(
-      "/3d/mainhome2.glb",
+      "/3d/mainhome3.glb",
       (gltf) => {
         const modelRoot = gltf.scene || (gltf.scenes && gltf.scenes[0]);
         if (!modelRoot) return;
@@ -144,14 +144,14 @@ export default function Room() {
           if (mesh && mesh.isMesh) {
             mesh.castShadow = true;
             mesh.receiveShadow = true;
-            // Reduce environment (EXR) contribution for higher contrast
+            // EXR environment lighting contribution at ~20%
             const material = mesh.material;
             if (Array.isArray(material)) {
               material.forEach((m) => {
-                if (m && "envMapIntensity" in m) m.envMapIntensity = 0.80;
+                if (m && "envMapIntensity" in m) m.envMapIntensity = 0.2;
               });
             } else if (material && "envMapIntensity" in material) {
-              material.envMapIntensity = 0.50;
+              material.envMapIntensity = 0.2;
             }
           }
         });
@@ -166,14 +166,15 @@ export default function Room() {
         modelRoot.position.y += -center.y;
         modelRoot.position.z += -center.z;
 
-        // Spotlight - very strong, focused
-        const spot = new THREE.SpotLight(new THREE.Color("#d8d4ba"), 2500, 160, 0.32, 0.7, 1.6);
+        // Spotlight (stronger, tighter for crisper shadows)
+        const spot = new THREE.SpotLight(new THREE.Color("#d8d4ba"), 650, 100, 0.35, 0.25, 1.4);
         spot.position.set(lightX, lightY, lightZ);
         spot.castShadow = true;
         spot.shadow.mapSize.set(2048, 2048);
-        spot.shadow.bias = -0.003;
+        spot.shadow.bias = -0.0015;
+        spot.shadow.normalBias = 0.02;
         spot.shadow.camera.near = 0.5;
-        spot.shadow.camera.far = 160;
+        spot.shadow.camera.far = 100;
         const gobo = createBlobGradientTexture(1024);
         gobo.flipY = false;
         gobo.needsUpdate = true;
@@ -192,7 +193,7 @@ export default function Room() {
       },
       undefined,
       (error) => {
-        console.error("Failed to load /3d/mainhome2.glb", error);
+        console.error("Failed to load /3d/mainhome3.glb", error);
       }
     );
 
@@ -431,9 +432,9 @@ export default function Room() {
             <button
               onClick={() => {
                 // Light Preset 1: match screenshot params
-                setLightX(-2.9);
-                setLightY(7.6);
-                setLightZ(-17.1);
+                setLightX(0.2);
+                setLightY(15.2);
+                setLightZ(-27.2);
               }}
               style={{
                 padding: "6px 10px",
