@@ -47,6 +47,7 @@ export default function FixedRoomPage() {
   const socketRef = useRef<any>(null);
   const [remoteProgress, setRemoteProgress] = useState<number | null>(null);
   const [remoteOverlay, setRemoteOverlay] = useState<number | null>(null);
+  const [remoteOverlayIndex, setRemoteOverlayIndex] = useState<number | null>(null);
   // step 0로 돌아오면 랜딩 최종 구도(camVeryClose)로 복귀
   const stepTarget = step === 0 ? camVeryClose : steps[step];
   // Intro settle animation (once on mount: camVeryCloseUp -> camVeryClose)
@@ -77,12 +78,16 @@ export default function FixedRoomPage() {
     socket.on("setStep", onSetStep);
     socket.on("progress", onProgress);
     socket.on("overlayOpacity", onOverlay);
+    socket.on("overlayIndex", (v: number) => {
+      if (typeof v === "number") setRemoteOverlayIndex(Math.max(0, Math.min(13, Math.floor(v))));
+    });
     return () => {
       socket.off("next", onNext);
       socket.off("prev", onPrev);
       socket.off("setStep", onSetStep);
       socket.off("progress", onProgress);
       socket.off("overlayOpacity", onOverlay);
+      socket.off("overlayIndex");
       socket.disconnect();
       socketRef.current = null;
     };
@@ -153,6 +158,7 @@ export default function FixedRoomPage() {
           "/2d/pic/summerbeach.png",
           "/2d/pic/rainyspring.png",
         ]}
+        overlayIndex={step >= 2 && remoteOverlayIndex !== null ? remoteOverlayIndex : undefined}
         overlaySlideLerp={500}
         progressTarget={progressTarget as any}
         progressLerp={dynamicProgressLerp}

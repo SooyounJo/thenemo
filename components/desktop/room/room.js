@@ -67,6 +67,8 @@ export default function Room(props) {
     overlaySeqExt = ".png",
     overlaySlideLerp = 500,
     overlaySeqList,
+    // Optional external control of overlay index
+    overlayIndex: overlayIndexProp,
   } = props || {};
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
@@ -92,6 +94,7 @@ export default function Room(props) {
   const overlayNextTexRef = useRef(null);
   const overlayIndexRef = useRef(0);
   const overlaySlideRafRef = useRef(null);
+  const overlayTexCacheRef = useRef(new Map());
   const [overlayIndex, setOverlayIndex] = useState(0);
   // Overlay local offsets the user can tune in runtime
   const [overlayOffX, setOverlayOffX] = useState(0);
@@ -551,6 +554,43 @@ export default function Room(props) {
     };
   }, []);
 
+  // Mirror external overlay index if provided
+  useEffect(() => {
+    if (typeof overlayIndexProp === "number" && overlayIndexProp !== overlayIndex) {
+      setOverlayIndex(overlayIndexProp);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overlayIndexProp]);
+
+  // Preload overlay textures for smooth instant switching
+  useEffect(() => {
+    const list = Array.isArray(overlaySeqList) ? overlaySeqList : [];
+    if (list.length === 0) return;
+    const cache = overlayTexCacheRef.current;
+    const loader = new THREE.TextureLoader();
+    let cancelled = false;
+    list.forEach((url) => {
+      if (!url || cache.has(url)) return;
+      loader.load(
+        url,
+        (tex) => {
+          if (cancelled) {
+            tex.dispose && tex.dispose();
+            return;
+          }
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.needsUpdate = true;
+          cache.set(url, tex);
+        },
+        undefined,
+        () => {
+          // ignore errors for preloads
+        }
+      );
+    });
+    return () => { cancelled = true; };
+  }, [overlaySeqList]);
+
   // Allow external page control to drive HTML params (if provided)
   useEffect(() => {
     if (typeof initialHtmlDist === "number") setHtmlDist(initialHtmlDist);
@@ -593,44 +633,33 @@ export default function Room(props) {
   // React to overlay image URL changes
   useEffect(() => {
     if (!overlayImageUrl) return;
-    const group = overlayGroupRef.current;
-    const currPlane = overlayPlaneRef.current;
     const currMat = overlayMatRef.current;
-    if (!group || !currPlane || !currMat) return;
-    // cross-fade swap to new image (no slide for explicit URL changes)
-    const tex = new THREE.TextureLoader().load(overlayImageUrl, () => {
-      const nextMat = new THREE.MeshBasicMaterial({
-        map: tex, transparent: true, depthTest: true, depthWrite: true, toneMapped: false, opacity: 0.0,
-      });
-      const nextPlane = new THREE.Mesh(currPlane.geometry, nextMat);
-      nextPlane.position.copy(currPlane.position);
-      nextPlane.scale.copy(currPlane.scale);
-      // default render order
-      group.add(nextPlane);
-      const startAlpha = currMat.opacity ?? 1.0;
-      const endAlpha = startAlpha;
-      const t0 = performance.now();
-      const dur = Math.max(150, overlaySlideLerp || 500);
-      const anim = (now) => {
-        const u = Math.min(1, (now - t0) / dur);
-        const s = u * u * (3 - 2 * u);
-        const fade = 1.0;
-        currMat.opacity = (1 - s) * fade * startAlpha;
-        nextMat.opacity = s * fade * endAlpha;
-        currMat.needsUpdate = true;
-        nextMat.needsUpdate = true;
-        if (u < 1) {
-          requestAnimationFrame(anim);
-        } else {
-          group.remove(currPlane);
-          currMat.dispose && currMat.dispose();
-          overlayPlaneRef.current = nextPlane;
-          overlayMatRef.current = nextMat;
-          overlayTexRef.current = tex;
+    if (!currMat) return;
+    let cancelled = false;
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      overlayImageUrl,
+      (tex) => {
+        if (cancelled) {
+          tex.dispose && tex.dispose();
+          return;
         }
-      };
-      requestAnimationFrame(anim);
-    });
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.needsUpdate = true;
+        if (overlayTexRef.current && overlayTexRef.current !== tex && overlayTexRef.current.dispose) {
+          overlayTexRef.current.dispose();
+        }
+        currMat.map = tex;
+        currMat.opacity = 1.0;
+        currMat.needsUpdate = true;
+        overlayTexRef.current = tex;
+      },
+      undefined,
+      () => {
+        // ignore load error; keep current image
+      }
+    );
+    return () => { cancelled = true; };
   }, [overlayImageUrl]);
 
   // Smoothly drive overlay opacity to a target [0..1]
@@ -666,61 +695,56 @@ export default function Room(props) {
     if (!overlayVisible) return;
     const idx = Math.max(0, Math.min(Math.max(1, listCount) - 1, Math.floor(overlayIndex)));
     if (idx === overlayIndexRef.current) return;
-    // start slide transition to new index
-    const currPlane = overlayPlaneRef.current;
+    // instant switch to new index (no crossfade)
     const currMat = overlayMatRef.current;
     const group = overlayGroupRef.current;
-    if (!currPlane || !currMat || !group) { overlayIndexRef.current = idx; return; }
+    if (!currMat || !group) { overlayIndexRef.current = idx; return; }
+    // Cancel any pending crossfade animation
+    if (overlaySlideRafRef.current) {
+      cancelAnimationFrame(overlaySlideRafRef.current);
+      overlaySlideRafRef.current = null;
+    }
     const url = useList ? overlaySeqList[idx] : `${overlaySeqPrefix}${String(idx + 1)}${overlaySeqExt}`;
+    const cache = overlayTexCacheRef.current;
+    const cached = cache.get(url);
+    if (cached) {
+      if (overlayTexRef.current && overlayTexRef.current !== cached && overlayTexRef.current.dispose) {
+        overlayTexRef.current.dispose();
+      }
+      currMat.map = cached;
+      currMat.opacity = 1.0;
+      currMat.needsUpdate = true;
+      overlayTexRef.current = cached;
+      overlayIndexRef.current = idx;
+      return;
+    }
     const loader = new THREE.TextureLoader();
-    loader.load(url, (tex) => {
-      // Pure crossfade (no slide)
-      const nextMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: true, depthWrite: true, toneMapped: false, opacity: 0.0 });
-      const nextPlane = new THREE.Mesh(currPlane.geometry, nextMat);
-      nextPlane.position.copy(currPlane.position);
-      nextPlane.scale.copy(currPlane.scale);
-      group.add(nextPlane);
-      overlayNextPlaneRef.current = nextPlane;
-      overlayNextMatRef.current = nextMat;
-      const startOpacity = overlayMatRef.current ? overlayMatRef.current.opacity : 1.0;
-      const t0 = performance.now();
-      const dur = Math.max(150, overlaySlideLerp || 500);
-      const animate = (now) => {
-        const u = Math.min(1, (now - t0) / dur);
-        const w = u * u * (3 - 2 * u); // smoothstep
-        if (overlayMatRef.current) {
-          overlayMatRef.current.opacity = (1 - w) * startOpacity;
-          overlayMatRef.current.needsUpdate = true;
+    let cancelled = false;
+    loader.load(
+      url,
+      (tex) => {
+        if (cancelled) {
+          tex.dispose && tex.dispose();
+          return;
         }
-        if (overlayNextMatRef.current) {
-          overlayNextMatRef.current.opacity = w;
-          overlayNextMatRef.current.needsUpdate = true;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.needsUpdate = true;
+        cache.set(url, tex);
+        if (overlayTexRef.current && overlayTexRef.current !== tex && overlayTexRef.current.dispose) {
+          overlayTexRef.current.dispose();
         }
-        if (u < 1) {
-          overlaySlideRafRef.current = requestAnimationFrame(animate);
-        } else {
-          // finalize
-          if (overlayPlaneRef.current) {
-            group.remove(overlayPlaneRef.current);
-            overlayMatRef.current && overlayMatRef.current.dispose && overlayMatRef.current.dispose();
-            overlayTexRef.current && overlayTexRef.current.dispose && overlayTexRef.current.dispose();
-          }
-          const newPlane = overlayNextPlaneRef.current;
-          const newMat = overlayNextMatRef.current;
-          overlayPlaneRef.current = newPlane || overlayPlaneRef.current;
-          overlayMatRef.current = newMat || overlayMatRef.current;
-          overlayTexRef.current = tex;
-          overlayNextPlaneRef.current = null;
-          overlayNextMatRef.current = null;
-          overlayIndexRef.current = idx;
-        }
-      };
-      overlaySlideRafRef.current = requestAnimationFrame(animate);
-    }, undefined, (err) => {
-      // If the target image is missing, keep the current one and do not swap.
-      // Mark index as unchanged; next valid index change will try again.
-      // console.warn("Overlay sequence image failed to load:", url, err);
-    });
+        currMat.map = tex;
+        currMat.opacity = 1.0;
+        currMat.needsUpdate = true;
+        overlayTexRef.current = tex;
+        overlayIndexRef.current = idx;
+      },
+      undefined,
+      () => {
+        // ignore load error; keep current
+      }
+    );
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     overlayIndex,

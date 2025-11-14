@@ -172,14 +172,18 @@ export default function MobileController() {
           </div>
         </>
       )}
-      {/* Step 2+: Overlay gradient */}
+      {/* Step 2+: Overlay image index (14-step, immediate switch) */}
       {step >= 2 && (
         <>
           <GradientControl
-            label="Fade"
-            colorA="#f59e0b"
-            colorB="#ef4444"
-            onChange={(v) => emit("overlayOpacity", v)}
+            label="Images"
+            colorA="#06b6d4"
+            colorB="#8b5cf6"
+            quantize={14}
+            onChange={(v) => {
+              const idx = Math.round(v * (14 - 1)); // 0..13
+              emit("overlayIndex", idx);
+            }}
           />
           <div style={{ display: "flex", gap: 12 }}>
             {step > 0 && (

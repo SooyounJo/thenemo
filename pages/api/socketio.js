@@ -26,6 +26,11 @@ export default function handler(req, res) {
       socket.on("overlayOpacity", (value) => {
         io.emit("overlayOpacity", typeof value === "number" ? value : 0);
       });
+      socket.on("overlayIndex", (value) => {
+        // Expect 0-based integer index
+        const v = typeof value === "number" ? Math.floor(value) : 0;
+        io.emit("overlayIndex", v);
+      });
     });
   }
   res.end();
