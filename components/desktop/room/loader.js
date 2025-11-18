@@ -151,7 +151,7 @@ export function loadModelAndLights(scene, lightPos, onReady) {
       const spot = new THREE.SpotLight(new THREE.Color("#eaf2ff"), 650, 80, 0.35, 0.25, 1.0);
       spot.position.set(lightPos.x, lightPos.y, lightPos.z);
       spot.castShadow = true;
-      spot.shadow.mapSize.set(1024, 1024);
+      spot.shadow.mapSize.set(2048, 2048);
       // Tweak shadow acne/peter-panning balance for crisper edges
       spot.shadow.bias = -0.0005;
       spot.shadow.normalBias = 0.05;

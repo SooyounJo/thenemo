@@ -31,6 +31,23 @@ export default function handler(req, res) {
         const v = typeof value === "number" ? Math.floor(value) : 0;
         io.emit("overlayIndex", v);
       });
+      socket.on("healingText", (value) => {
+        const text = typeof value === "string" ? value : "";
+        io.emit("healingText", text);
+      });
+      // Generated image tiling instructions for bliding page
+      socket.on("genImage", (payload) => {
+        // payload: { url: string, cols?: number, rows?: number, delayMs?: number }
+        const url = payload && typeof payload.url === "string" ? payload.url : "";
+        if (!url) return;
+        const cols = Math.max(1, Math.min(64, Number(payload?.cols ?? 12)));
+        const rows = Math.max(1, Math.min(64, Number(payload?.rows ?? 12)));
+        const delayMs = Math.max(0, Math.min(2000, Number(payload?.delayMs ?? 40)));
+        io.emit("genImage", { url, cols, rows, delayMs });
+      });
+      socket.on("genClear", () => {
+        io.emit("genClear");
+      });
     });
   }
   res.end();

@@ -96,6 +96,7 @@ export default function Room(props) {
   const overlaySlideRafRef = useRef(null);
   const overlayTexCacheRef = useRef(new Map());
   const [overlayIndex, setOverlayIndex] = useState(0);
+  const overlayBaseSizeRef = useRef({ w: 1.6, h: 0.9 });
   // Overlay local offsets the user can tune in runtime
   const [overlayOffX, setOverlayOffX] = useState(0);
   const [overlayOffY, setOverlayOffY] = useState(0);
@@ -112,8 +113,8 @@ export default function Room(props) {
 
   const [controlsOpen, setControlsOpen] = useState(true);
   const [camX, setCamX] = useState(initialCamera?.x ?? -2.0);
-  const [camY, setCamY] = useState(initialCamera?.y ?? 1.1);
-  const [camZ, setCamZ] = useState(initialCamera?.z ?? 4.8);
+  const [camY, setCamY] = useState(initialCamera?.y ?? 0.9);
+  const [camZ, setCamZ] = useState(initialCamera?.z ?? 9.2);
   const [enableZoom, setEnableZoom] = useState(true);
   const [enablePan, setEnablePan] = useState(false);
   const [lockDistance, setLockDistance] = useState(false);
@@ -145,7 +146,7 @@ export default function Room(props) {
       0.1,
       1000
     );
-    camera.position.set(2.5, 2, 3);
+    camera.position.set(camX, camY, camZ);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({
@@ -157,7 +158,7 @@ export default function Room(props) {
     renderer.setSize(container.clientWidth, container.clientHeight, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 1.18;
     renderer.physicallyCorrectLights = true;
     renderer.useLegacyLights = false;
     renderer.shadowMap.enabled = true;
@@ -184,7 +185,7 @@ export default function Room(props) {
     const disposeEnv = setupEXREnvironment(renderer, scene, "/exr/mea.exr");
 
     // Add a faint cool ambient to neutralize yellow cast (no heavy filters)
-    const ambient = new THREE.AmbientLight(0xdfeaff, 0.12);
+    const ambient = new THREE.AmbientLight(0xdfeaff, 0.08);
     scene.add(ambient);
     const ambientRef = { current: ambient };
 
@@ -247,7 +248,9 @@ export default function Room(props) {
       group.visible = !!overlayVisible;
       scene.add(group);
       overlayGroupRef.current = group;
-      const geo = new THREE.PlaneGeometry(1.6, 0.9); // ~16:9
+      const baseW = 1.6, baseH = 0.9;
+      const geo = new THREE.PlaneGeometry(baseW, baseH); // ~16:9
+      overlayBaseSizeRef.current = { w: baseW, h: baseH };
       // Pick initial texture from explicit list, numeric sequence, or explicit single image
       let initUrl = null;
       const initialIndex = 0;
@@ -624,11 +627,27 @@ export default function Room(props) {
         (typeof z === "number" ? z : group.position.z) + (overlayOffZ || 0)
       );
     }
-    if (typeof overlayScale === "number") {
-      if (overlayPlaneRef.current) overlayPlaneRef.current.scale.setScalar(overlayScale);
-      if (overlayNextPlaneRef.current) overlayNextPlaneRef.current.scale.setScalar(overlayScale);
-    }
-  }, [overlayVisible, overlayPos, overlayScale, overlayOffX, overlayOffY, overlayOffZ]);
+    // Apply scale, with special handling for the last image (square)
+    const applyScale = () => {
+      const plane = overlayPlaneRef.current;
+      const nextPlane = overlayNextPlaneRef.current;
+      const s = typeof overlayScale === "number" ? overlayScale : 1;
+      const base = overlayBaseSizeRef.current || { w: 1.6, h: 0.9 };
+      const useList = Array.isArray(overlaySeqList) && overlaySeqList.length > 0;
+      const listCount = useList ? overlaySeqList.length : (typeof overlaySeqCount === "number" ? overlaySeqCount : 0);
+      const isLast = listCount > 0 && overlayIndexRef.current === listCount - 1;
+      if (isLast) {
+        const sx = s * (base.h / base.w); // make width==height visually
+        const sy = s;
+        if (plane) plane.scale.set(sx, sy, 1);
+        if (nextPlane) nextPlane.scale.set(sx, sy, 1);
+      } else {
+        if (plane) plane.scale.set(s, s, 1);
+        if (nextPlane) nextPlane.scale.set(s, s, 1);
+      }
+    };
+    applyScale();
+  }, [overlayVisible, overlayPos, overlayScale, overlayOffX, overlayOffY, overlayOffZ, overlaySeqList, overlaySeqCount]);
 
   // React to overlay image URL changes
   useEffect(() => {
@@ -716,6 +735,17 @@ export default function Room(props) {
       currMat.needsUpdate = true;
       overlayTexRef.current = cached;
       overlayIndexRef.current = idx;
+      // Re-apply scale for last image (square)
+      const base = overlayBaseSizeRef.current || { w: 1.6, h: 0.9 };
+      const sNow = typeof overlayScale === "number" ? overlayScale : 1;
+      const isLast = listCount > 0 && idx === listCount - 1;
+      if (isLast) {
+        const sx = sNow * (base.h / base.w);
+        const sy = sNow;
+        if (overlayPlaneRef.current) overlayPlaneRef.current.scale.set(sx, sy, 1);
+      } else {
+        if (overlayPlaneRef.current) overlayPlaneRef.current.scale.set(sNow, sNow, 1);
+      }
       return;
     }
     const loader = new THREE.TextureLoader();
@@ -738,6 +768,17 @@ export default function Room(props) {
         currMat.needsUpdate = true;
         overlayTexRef.current = tex;
         overlayIndexRef.current = idx;
+        // Re-apply scale for last image (square)
+        const base = overlayBaseSizeRef.current || { w: 1.6, h: 0.9 };
+        const sNow = typeof overlayScale === "number" ? overlayScale : 1;
+        const isLast = listCount > 0 && idx === listCount - 1;
+        if (isLast) {
+          const sx = sNow * (base.h / base.w);
+          const sy = sNow;
+          if (overlayPlaneRef.current) overlayPlaneRef.current.scale.set(sx, sy, 1);
+        } else {
+          if (overlayPlaneRef.current) overlayPlaneRef.current.scale.set(sNow, sNow, 1);
+        }
       },
       undefined,
       () => {

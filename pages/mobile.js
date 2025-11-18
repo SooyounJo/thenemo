@@ -217,6 +217,36 @@ export default function MobileController() {
               </button>
             )}
           </div>
+          {/* Step 3: Healing input box appears (same timing as desktop generation) */}
+          {step === 3 && (
+            <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+              <input
+                placeholder="힐링 키워드 입력"
+                onChange={(e) => emit("healingText", e.target.value)}
+                style={{
+                  flex: 1,
+                  background: "#0b0d12",
+                  border: "1px solid #23262d",
+                  color: "#e5e7eb",
+                  borderRadius: 10,
+                  padding: "12px 14px",
+                }}
+              />
+              <button
+                onClick={() => emit("healingText", "")}
+                title="clear"
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #23262d",
+                  background: "#111318",
+                  color: "#e5e7eb",
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>
