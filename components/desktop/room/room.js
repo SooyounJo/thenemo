@@ -393,6 +393,7 @@ export default function Room(props) {
   <head>
     <meta charset="utf-8" />
     <style>
+      @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
       :root { --bg:#0b0d12; --fg:#e5e7eb; }
       * { box-sizing: border-box; }
       html,body { height:100%; }
@@ -400,7 +401,10 @@ export default function Room(props) {
         margin:0;
         background: var(--bg);
         color: var(--fg);
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, Apple Color Emoji, Segoe UI Emoji;
+        font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue",
+          Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji",
+          sans-serif;
         display:flex; align-items:center; justify-content:center;
         overflow:hidden;
       }
