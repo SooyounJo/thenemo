@@ -114,6 +114,8 @@ export default function Index() {
   const router = useRouter();
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [fading, setFading] = useState(false);
+  const [fxGather, setFxGather] = useState(false);
+  const [fxExplode, setFxExplode] = useState(false);
 
   useEffect(() => {
     // generate QR for /mobile on same host (socket path shared)
@@ -139,11 +141,11 @@ export default function Index() {
 
   const handleStart = useCallback(() => {
     if (fading) return;
-    setFading(true);
-    // small delay for fade-out, then navigate
-    setTimeout(() => {
-      router.push("/page2");
-    }, 600);
+    // sequence: gather -> explode -> blackout -> navigate
+    setFxGather(true);
+    setTimeout(() => setFxExplode(true), 800);
+    setTimeout(() => setFading(true), 1650);
+    setTimeout(() => router.push("/page2"), 2400);
   }, [fading, router]);
 
   return (
@@ -184,7 +186,7 @@ export default function Index() {
       </div>
 
       {/* Window-frame flowing typos */}
-      <FrameTypos />
+      <FrameTypos gather={fxGather} explode={fxExplode} />
 
       {/* Top-left typing NEMO */}
       <TypingNemo />
@@ -247,7 +249,7 @@ export default function Index() {
           background: "#000",
           pointerEvents: "none",
           opacity: fading ? 1 : 0,
-          transition: "opacity 600ms ease",
+          transition: "opacity 900ms ease",
         }}
       />
     </div>

@@ -9,6 +9,10 @@ export default function ThreeBackground() {
 	const rafRef = useRef(null);
 	const meshRef = useRef(null);
 	const uniformsRef = useRef(null);
+	// smooth scrolling-driven targets (approximate original mobile behavior)
+	const targetARef = useRef(new THREE.Color("#10131a"));
+	const targetBRef = useRef(new THREE.Color("#2a3350"));
+	const targetCRef = useRef(new THREE.Color("#9fbaff"));
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -108,9 +112,35 @@ export default function ThreeBackground() {
 			} catch {}
 		};
 		window.addEventListener("mobile-gradient", onGradient);
+		// scroll-driven palette (match original feeling: warm top, dark bottom)
+		const onMobileScroll = (e) => {
+			try {
+				const y = e?.detail?.y ?? window.scrollY ?? 0;
+				// normalize and wrap
+				const t = Math.max(0, Math.min(1, (y % 1400) / 1400));
+				// base dark
+				const dark = new THREE.Color("#0b0d12");
+				// mid cool
+				const cool = new THREE.Color("#2a3350");
+				// warm beige for top highlight
+				const warm = new THREE.Color("#dbcba0");
+				// compute targets by lerping cool<->warm as t moves, keep dark as base
+				targetARef.current.copy(dark);
+				targetBRef.current.copy(cool).lerp(warm, 0.55 + 0.45 * Math.sin(t * Math.PI * 2.0));
+				targetCRef.current.copy(warm).lerp(cool, 0.25 * Math.cos(t * Math.PI * 2.0));
+			} catch {}
+		};
+		window.addEventListener("mobile-scroll", onMobileScroll, { passive: true });
 
 		const tick = (now) => {
 			uniforms.uTime.value = now * 0.001;
+			// gentle color lerp toward targets for smoothness
+			if (uniforms.uA && uniforms.uB && uniforms.uC) {
+				const lerp = (cur, tar, k = 0.06) => cur.lerp(tar, k);
+				lerp(uniforms.uA.value, targetARef.current);
+				lerp(uniforms.uB.value, targetBRef.current);
+				lerp(uniforms.uC.value, targetCRef.current);
+			}
 			renderer.render(scene, camera);
 			rafRef.current = requestAnimationFrame(tick);
 		};
@@ -119,6 +149,7 @@ export default function ThreeBackground() {
 		return () => {
 			window.removeEventListener("resize", onResize);
 			window.removeEventListener("mobile-gradient", onGradient);
+			window.removeEventListener("mobile-scroll", onMobileScroll);
 			if (rafRef.current) cancelAnimationFrame(rafRef.current);
 			if (rendererRef.current) {
 				const el = rendererRef.current.domElement;

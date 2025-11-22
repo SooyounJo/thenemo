@@ -2,11 +2,25 @@
 
 import { useMemo } from "react";
 
-export default function FrameTypos() {
+export default function FrameTypos({ gather = false, explode = false }) {
 	// Long repeated string to ensure continuous marquee
 	const phrase = "NEMO — THINKING — BREATHE — FIND YOUR WINDOW — REST — ";
 	const rowText = useMemo(() => new Array(40).fill(phrase).join(""), []);
 	const colText = useMemo(() => new Array(80).fill("NEMO • THINK • REST • ").join(""), []);
+
+	// helper to build explode transform
+	const explodeTx = (ix) => {
+		if (!explode) return {};
+		const dx = ((ix * 37) % 60) - 30; // -30..30 vw
+		const dy = ((ix * 53) % 60) - 30; // -30..30 vh
+		const rot = ((ix * 91) % 120) - 60; // -60..60 deg
+		const sc = 0.8 + (((ix * 23) % 40) / 100); // 0.8..1.2
+		return {
+			transform: `translate(${dx}vw, ${dy}vh) rotate(${rot}deg) scale(${sc})`,
+			opacity: 0,
+			transition: "transform 900ms ease, opacity 900ms ease",
+		};
+	};
 
 	return (
 		<div
@@ -15,6 +29,12 @@ export default function FrameTypos() {
 				inset: 0,
 				zIndex: 1,
 				pointerEvents: "none",
+				left: gather ? "50%" : 0,
+				top: gather ? "50%" : 0,
+				width: gather ? "70vmin" : "100%",
+				height: gather ? "70vmin" : "100%",
+				transform: gather ? "translate(-50%,-50%)" : "none",
+				transition: "left 700ms ease, top 700ms ease, width 700ms ease, height 700ms ease, transform 700ms ease",
 			}}
 		>
 			<style>{`
@@ -55,6 +75,7 @@ export default function FrameTypos() {
 						letterSpacing: 2,
 						textTransform: "uppercase",
 						animation: "marqueeX 32s linear infinite",
+						...(explodeTx(1)),
 					}}
 				>
 					{rowText}
@@ -80,6 +101,7 @@ export default function FrameTypos() {
 						letterSpacing: 2,
 						textTransform: "uppercase",
 						animation: "marqueeXRev 36s linear infinite",
+						...(explodeTx(2)),
 					}}
 				>
 					{rowText}
@@ -106,6 +128,7 @@ export default function FrameTypos() {
 						letterSpacing: 2,
 						textTransform: "uppercase",
 						animation: "marqueeX 34s linear infinite",
+						...(explodeTx(3)),
 					}}
 				>
 					{rowText}
@@ -133,6 +156,7 @@ export default function FrameTypos() {
 						letterSpacing: 2,
 						textTransform: "uppercase",
 						animation: "marqueeY 56s linear infinite",
+						...(explodeTx(4)),
 					}}
 				>
 					{colText}
@@ -160,6 +184,7 @@ export default function FrameTypos() {
 						letterSpacing: 2,
 						textTransform: "uppercase",
 						animation: "marqueeYRev 60s linear infinite",
+						...(explodeTx(5)),
 					}}
 				>
 					{colText}
@@ -188,6 +213,7 @@ export default function FrameTypos() {
 						letterSpacing: 2,
 						textTransform: "uppercase",
 						animation: "marqueeY 58s linear infinite",
+						...(explodeTx(6)),
 					}}
 				>
 					{colText}
