@@ -120,6 +120,35 @@ export default function FixedRoomPage() {
   const overlayTarget = (remoteOverlay !== null ? remoteOverlay : (step === 3 ? 0 : 1));
   const dynamicOverlayLerp = remoteOverlay !== null ? 180 : 1200;
 
+  // Top question modal (glassmorphism)
+  const [bannerText, setBannerText] = useState<string>("");
+  const [bannerVisible, setBannerVisible] = useState<boolean>(false);
+  const bannerTimerRef = useRef<any>(null);
+  useEffect(() => {
+    if (bannerTimerRef.current) {
+      clearTimeout(bannerTimerRef.current);
+      bannerTimerRef.current = null;
+    }
+    // step 1: first Next
+    if (step === 1) {
+      setBannerText("당신이 좋아하는 시간대를 선택해주세요");
+      setBannerVisible(true);
+      bannerTimerRef.current = setTimeout(() => setBannerVisible(false), 3000);
+    }
+    // step 2: second Next
+    if (step === 2) {
+      setBannerText("창문 밖의 날씨가 어떨 것 같나요?");
+      setBannerVisible(true);
+      bannerTimerRef.current = setTimeout(() => setBannerVisible(false), 3000);
+    }
+    return () => {
+      if (bannerTimerRef.current) {
+        clearTimeout(bannerTimerRef.current);
+        bannerTimerRef.current = null;
+      }
+    };
+  }, [step]);
+
   return (
     <>
       <Room
@@ -178,6 +207,31 @@ export default function FixedRoomPage() {
         showHtmlSliders={false}
         staticView={true}
       />
+      {/* Top glassy banner modal */}
+      {bannerVisible && bannerText && (
+        <div
+          style={{
+            position: "fixed",
+            top: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 70,
+            padding: "10px 14px",
+            borderRadius: 12,
+            background: "rgba(0,0,0,0.62)",
+            border: "1px solid rgba(255,255,255,0.14)",
+            color: "#e5e7eb",
+            backdropFilter: "blur(8px)",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+            fontSize: 13.5,
+            letterSpacing: 0.2,
+            pointerEvents: "none",
+            textAlign: "center",
+          }}
+        >
+          {bannerText}
+        </div>
+      )}
       <div style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 12, zIndex: 40 }}>
         {step > 0 && (
           <button

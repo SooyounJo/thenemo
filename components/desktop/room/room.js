@@ -209,6 +209,16 @@ export default function Room(props) {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
+    // Apply a subtle CSS filter to the WebGL canvas only (keeps CSS3D sharp)
+    try {
+      const filterStr =
+        (props && typeof props.renderFilter === "string" && props.renderFilter) ||
+        // legacy fallback if provided, else gentle film-like tone
+        ((props && typeof props.renderBlurPx === "number" && props.renderBlurPx > 0)
+          ? `blur(${props.renderBlurPx}px)`
+          : "contrast(1.03) saturate(0.92) brightness(0.98)");
+      renderer.domElement.style.filter = filterStr;
+    } catch {}
     rendererRef.current = renderer;
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -678,6 +688,24 @@ export default function Room(props) {
       if (fpsEl && fpsEl.parentNode) fpsEl.parentNode.removeChild(fpsEl);
     };
   }, []);
+
+  // Update blur dynamically if prop changes
+  const filterDepsKey = `${(props && props.renderFilter) || ""}|${(props && props.renderBlurPx) || ""}`;
+  useEffect(() => {
+    const r = rendererRef.current;
+    if (!r) return;
+    const el = r.domElement;
+    if (!el) return;
+    try {
+      const filterStr =
+        (props && typeof props.renderFilter === "string" && props.renderFilter) ||
+        ((props && typeof props.renderBlurPx === "number" && props.renderBlurPx > 0)
+          ? `blur(${props.renderBlurPx}px)`
+          : "contrast(1.03) saturate(0.92) brightness(0.98)");
+      el.style.filter = filterStr;
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterDepsKey]);
 
   // Mirror external overlay index if provided
   useEffect(() => {
