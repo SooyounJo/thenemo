@@ -61,7 +61,7 @@ export default function FixedRoomPage() {
   const combinedTarget = intro ? camVeryClose : stepTarget;
   // Socket.IO client for remote control (next / prev / progress / setStep)
   useEffect(() => {
-    const socket = io({ path: "/api/socketio" });
+    const socket = io("/desktop", { path: "/api/socketio" });
     socketRef.current = socket;
     const onNext = () => setStep((s) => Math.min(steps.length - 1, s + 1));
     const onPrev = () => setStep((s) => Math.max(0, s - 1));

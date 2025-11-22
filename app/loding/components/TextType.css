@@ -1,0 +1,12 @@
+@keyframes caretBlink {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0; }
+}
+.tt-caret::after {
+	content: "│";
+	display: inline-block;
+	margin-left: 2px;
+	animation: caretBlink 1s step-end infinite;
+}
+
+

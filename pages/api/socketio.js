@@ -53,6 +53,41 @@ export default function handler(req, res) {
         io.emit("genClear");
       });
     });
+
+    // Namespaced channels to avoid cross-talk between mobile and desktop
+    const bindNamespace = (nsp) => {
+      nsp.on("connection", (socket) => {
+        socket.on("landingProceed", (payload) => {
+          nsp.emit("landingProceed", { ts: Date.now(), ...(payload || {}) });
+        });
+        socket.on("next", () => nsp.emit("next"));
+        socket.on("prev", () => nsp.emit("prev"));
+        socket.on("progress", (value) => nsp.emit("progress", typeof value === "number" ? value : 0));
+        socket.on("setStep", (value) => nsp.emit("setStep", typeof value === "number" ? value : 0));
+        socket.on("overlayOpacity", (value) =>
+          nsp.emit("overlayOpacity", typeof value === "number" ? value : 0)
+        );
+        socket.on("overlayIndex", (value) => {
+          const v = typeof value === "number" ? Math.floor(value) : 0;
+          nsp.emit("overlayIndex", v);
+        });
+        socket.on("healingText", (value) => {
+          const text = typeof value === "string" ? value : "";
+          nsp.emit("healingText", text);
+        });
+        socket.on("genImage", (payload) => {
+          const url = payload && typeof payload.url === "string" ? payload.url : "";
+          if (!url) return;
+          const cols = Math.max(1, Math.min(64, Number(payload?.cols ?? 12)));
+          const rows = Math.max(1, Math.min(64, Number(payload?.rows ?? 12)));
+          const delayMs = Math.max(0, Math.min(2000, Number(payload?.delayMs ?? 40)));
+          nsp.emit("genImage", { url, cols, rows, delayMs });
+        });
+        socket.on("genClear", () => nsp.emit("genClear"));
+      });
+    };
+    bindNamespace(res.socket.server.io.of("/mobile"));
+    bindNamespace(res.socket.server.io.of("/desktop"));
   }
   res.end();
 }
