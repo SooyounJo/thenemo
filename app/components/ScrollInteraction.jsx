@@ -15,10 +15,10 @@ export default function ScrollInteraction() {
           new CustomEvent("bg-gradient:progress", { detail: v })
         );
       },
-      friction: 0.10,
-      minVelocity: 0.00005,
-      wheelScale: 0.0018,
-      touchScale: 0.0035,
+      friction: 0.12,
+      minVelocity: 0.00004,
+      wheelScale: 0.0012,
+      touchScale: 0.0023,
     });
 
     function onEnable() {

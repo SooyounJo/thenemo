@@ -155,6 +155,7 @@ export default function Page2() {
     clearTimers();
     setStage(s);
     if (s === 0) {
+      try { socketRef.current?.emit("moodScroll:disable"); } catch {}
       setFadeVideo(false);
       setShowPrompt(false);
       setShowWindows(false);
@@ -170,6 +171,7 @@ export default function Page2() {
         if (p && typeof p.catch === "function") p.catch(() => {});
       }
     } else if (s === 1) {
+      try { socketRef.current?.emit("moodScroll:disable"); } catch {}
       setFadeVideo(true);
       setShowWindows(false);
       setShowPrompt(false);
@@ -183,6 +185,9 @@ export default function Page2() {
       // Auto advance to windows after ~2.6s
       autoTimerRef.current = setTimeout(() => goToStage(2), 2600);
     } else if (s === 2) {
+      try { socketRef.current?.emit("moodScroll:enable"); } catch {}
+      setMoodLocked(false);
+      moodLockedRef.current = false;
       setFadeVideo(true);
       setShowPrompt(false);
       setShowWindows(true);
@@ -352,6 +357,9 @@ export default function Page2() {
   const [tileSources, setTileSources] = useState([]);
   const [folderIndex, setFolderIndex] = useState(1); // 1..9 for /2d/{n}
   const [prevTileSources, setPrevTileSources] = useState([]);
+  const [moodLocked, setMoodLocked] = useState(false);
+  const socketRef = useRef(null);
+  const moodLockedRef = useRef(false);
   const triggerArrange = useCallback(() => {
     // Begin smooth transition into a 2x2 grid of 4 survivors
     setArranging(true);
@@ -402,6 +410,7 @@ export default function Page2() {
   // Socket.IO: listen to desktop namespace for mobile-driven controls
   useEffect(() => {
     const socket = io("/desktop", { path: "/api/socketio" });
+    socketRef.current = socket;
     const onNext = () => {
       // emulate pressing EdgeNav Next
       if (stage === 2 && !arranged) { triggerArrange(); return; }
@@ -414,6 +423,10 @@ export default function Page2() {
           const grid = Array.from({ length: 9 }).map((_, i) => arr[i % arr.length]);
           localStorage.setItem("nemo_grid_images", JSON.stringify(grid));
         } catch {}
+        try { socketRef.current?.emit("moodSelect"); } catch {}
+        try { socketRef.current?.emit("moodScroll:disable"); } catch {}
+        setMoodLocked(true);
+        moodLockedRef.current = true;
         setClosing(true);
         setTimeout(() => router.push("/room"), 700);
         return;
@@ -427,8 +440,10 @@ export default function Page2() {
     const onProgress = (v) => {
       const value = typeof v === "number" ? v : 0;
       // Map progress [0..1] → folderIndex 1..9
-      const idx = Math.max(1, Math.min(9, Math.floor(value * 9) + 1));
-      setFolderIndex(idx);
+      if (!moodLockedRef.current) {
+        const idx = Math.max(1, Math.min(9, Math.floor(value * 9) + 1));
+        setFolderIndex(idx);
+      }
       // Ensure we are on windows stage and arranged 2x2 to visualize mood
       if (stage < 2) {
         goToStage(2);
@@ -438,10 +453,13 @@ export default function Page2() {
         triggerArrange();
       }
     };
+    const onMoodSelect = () => { setMoodLocked(true); moodLockedRef.current = true; };
+    socket.on("moodSelect", onMoodSelect);
     socket.on("next", onNext);
     socket.on("prev", onPrev);
     socket.on("progress", onProgress);
     return () => {
+      socket.off("moodSelect", onMoodSelect);
       socket.off("next", onNext);
       socket.off("prev", onPrev);
       socket.off("progress", onProgress);

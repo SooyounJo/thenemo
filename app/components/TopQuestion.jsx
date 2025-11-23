@@ -45,6 +45,8 @@ export default function TopQuestion() {
           currentStageRef.current = 3;
           // switch background logic to base (formerly stage1)
           window.dispatchEvent(new CustomEvent("bg-gradient:stage1"));
+          // re-enable scroll for stage 3 as well
+          window.dispatchEvent(new CustomEvent("bg-gradient:enable-scroll"));
         } else if (s === 3) {
           // final confirm on stage 3: show final screen (no scroll)
           setShow(false);

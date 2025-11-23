@@ -39,6 +39,10 @@ export default function handler(req, res) {
         const text = typeof value === "string" ? value : "";
         io.emit("healingText", text);
       });
+      // Synchronized scroll enable/disable and selection lock for mood step
+      socket.on("moodScroll:enable", () => io.emit("moodScroll:enable"));
+      socket.on("moodScroll:disable", () => io.emit("moodScroll:disable"));
+      socket.on("moodSelect", () => io.emit("moodSelect"));
       // Generated image tiling instructions for bliding page
       socket.on("genImage", (payload) => {
         // payload: { url: string, cols?: number, rows?: number, delayMs?: number }
@@ -84,6 +88,10 @@ export default function handler(req, res) {
           const text = typeof value === "string" ? value : "";
           nsp.emit("healingText", text);
         });
+        // Namespaced versions as well
+        socket.on("moodScroll:enable", () => nsp.emit("moodScroll:enable"));
+        socket.on("moodScroll:disable", () => nsp.emit("moodScroll:disable"));
+        socket.on("moodSelect", () => nsp.emit("moodSelect"));
         socket.on("genImage", (payload) => {
           const url = payload && typeof payload.url === "string" ? payload.url : "";
           if (!url) return;

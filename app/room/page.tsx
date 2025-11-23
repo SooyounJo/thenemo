@@ -50,6 +50,8 @@ export default function FixedRoomPage() {
   const [remoteProgress, setRemoteProgress] = useState<number | null>(null);
   const [remoteOverlay, setRemoteOverlay] = useState<number | null>(null);
   const [remoteOverlayIndex, setRemoteOverlayIndex] = useState<number | null>(null);
+  const [savedLightPath, setSavedLightPath] = useState<number | null>(null);
+  const [lightPath, setLightPath] = useState<number>(0.538);
   const [lookMsg, setLookMsg] = useState(false);
   // step 0로 돌아오면 랜딩 최종 구도(camVeryClose)로 복귀
   const stepTarget = step === 0 ? camVeryClose : steps[step];
@@ -61,6 +63,20 @@ export default function FixedRoomPage() {
   }, []);
   const combinedTarget = intro ? camVeryClose : stepTarget;
   // Socket.IO client for remote control (next / prev / progress / setStep)
+  useEffect(() => {
+    // pick up light path chosen on mobile (if any)
+    try {
+      const v = localStorage.getItem("nemo_light_path");
+      if (v != null) {
+        const n = Math.max(0, Math.min(1, parseFloat(v)));
+        if (!Number.isNaN(n)) setSavedLightPath(n);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    // initialize light path once saved value is known
+    if (savedLightPath != null) setLightPath(savedLightPath);
+  }, [savedLightPath]);
   useEffect(() => {
     const socket = io("/desktop", { path: "/api/socketio" });
     socketRef.current = socket;
@@ -151,9 +167,18 @@ export default function FixedRoomPage() {
   const lightTarget = lightSteps[step] || undefined;
   // 진행 슬라이더: 랜딩(0)에서는 0.538, 첫 다음(1)에서는 0.0(아침)으로 이동
   // 그 이후 스텝에서는 사용자가 조정한 값을 보존하도록 별도 타깃을 주지 않음
-  const defaultProgress: number | any = step === 0 ? 0.538 : (step === 1 ? 0.0 : (undefined as any));
-  const progressTarget = (remoteProgress !== null ? (remoteProgress as any) : defaultProgress);
-  const dynamicProgressLerp = remoteProgress !== null ? 180 : 900;
+  const defaultProgress: number | any = step === 0 ? (savedLightPath ?? 0.538) : (step === 1 ? 0.0 : (undefined as any));
+  // Only update light path from remote progress during step === 1 (time-of-day).
+  useEffect(() => {
+    if (step !== 1) return;
+    if (typeof remoteProgress === "number") {
+      const clamped = Math.max(0, Math.min(1, remoteProgress));
+      setLightPath(clamped);
+      try { localStorage.setItem("nemo_light_path", String(clamped)); } catch {}
+    }
+  }, [step, remoteProgress]);
+  const progressTarget = (lightPath ?? defaultProgress) as any;
+  const dynamicProgressLerp = 900;
   const overlayTarget = (remoteOverlay !== null ? remoteOverlay : (step === 3 ? 0 : 1));
   const dynamicOverlayLerp = remoteOverlay !== null ? 180 : 1200;
 
@@ -237,18 +262,17 @@ export default function FixedRoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, remoteProgress]);
 
-  // Derive desktop screen 2x2 images from mobile scroll when step === 1 (mood question)
-  const moodFolderIndex = useMemo(() => {
-    if (step !== 1) return null;
-    const p = typeof remoteProgress === "number" ? remoteProgress : 0;
-    const idx = Math.max(1, Math.min(9, Math.floor(p * 9) + 1));
-    return idx;
-  }, [step, remoteProgress]);
-  const screenGridImages = useMemo(() => {
-    if (!moodFolderIndex) return undefined;
-    const base = moodFolderIndex;
-    return [1, 2, 3, 4].map((i) => `/2d/${base}/${base}-${i}.png`);
-  }, [moodFolderIndex]);
+  // Freeze desktop screen 2x2 images to the user's last selection (do NOT follow light path)
+  const [screenGridImages, setScreenGridImages] = useState<string[] | undefined>(undefined);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("nemo_grid_images");
+      const arr = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(arr) && arr.length >= 4) {
+        setScreenGridImages(arr.slice(0, 4));
+      }
+    } catch {}
+  }, []);
 
   return (
     <>
@@ -463,11 +487,21 @@ export default function FixedRoomPage() {
         {step >= 2 && (
           <button
             onClick={() => {
+              // Update room overlay image (kept as-is with weather), and also instruct TV to show a genimg
               const pool = weatherPool.length ? weatherPool : ["/2d/nemo.png"];
               const i = Math.floor(Math.random() * pool.length);
               const url = pool[i];
               try { console.log("[room] look outside click ->", url); } catch {}
               if (url !== html2Url) setHtml2Url(url);
+              // Emit a random image from /genimg/{1..9}/{n}-{1..4}.png to TV
+              try {
+                const n = Math.floor(Math.random() * 9) + 1;
+                const k = Math.floor(Math.random() * 4) + 1;
+                const tvUrl = `/genimg/${n}/${n}-${k}.png`;
+                const s = io({ path: "/api/socketio" });
+                s.emit("tvShow", tvUrl);
+                setTimeout(() => s.disconnect(), 500);
+              } catch {}
             }}
             style={{
               padding: "10px 16px",
