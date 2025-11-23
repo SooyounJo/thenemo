@@ -101,6 +101,19 @@ export default function Room(props) {
     overlayScale,
     overlayOpacityTarget,
     overlayOpacityLerp,
+    overlayFollowCamera,
+    overlayFollowDist,
+    // Debug: render solid color instead of texture
+    overlayDebugSolid,
+    overlayDebugColor = "#ff0000",
+    // Safe 2D image plane (simple, independent)
+    img2dUrl,
+    img2dPos,
+    img2dScale,
+    img2dOpacity,
+    enableImg2dPlane = false,
+    enableCssWindow = false,
+    useCssWindow,
     // Optional sequence control to change overlay image based on light path or external events
     overlaySeqPrefix,
     overlaySeqCount,
@@ -127,6 +140,9 @@ export default function Room(props) {
   // Overlay group and plane refs (for 2D billboard outside window)
   const overlayGroupRef = useRef(null);
   const overlayPlaneRef = useRef(null);
+  // CSS3D outside image (preferred, replaces WebGL plane)
+  const overlayCssObjRef = useRef(null);
+  const overlayDomRef = useRef(null);
   const overlayMatRef = useRef(null);
   const overlayTexRef = useRef(null);
   const overlayNextPlaneRef = useRef(null);
@@ -136,6 +152,16 @@ export default function Room(props) {
   const overlaySlideRafRef = useRef(null);
   const overlayTexCacheRef = useRef(new Map());
   const [overlayIndex, setOverlayIndex] = useState(0);
+  // Simple 2D image plane (safe path)
+  const img2dGroupRef = useRef(null);
+  const img2dPlaneRef = useRef(null);
+  const img2dMatRef = useRef(null);
+  // CSS window image
+  const cssWindowGroupRef = useRef(null);
+  const cssWindowObjRef = useRef(null);
+  const cssWindowImgRef = useRef(null);
+  // Window glass meshes (for direct texture replacement)
+  const windowGlassMeshesRef = useRef([]);
   // Track zoom distance and manage post-zoom lowering animation
   const lastZoomDistRef = useRef(null);
   const lowerAnimRafRef = useRef(null);
@@ -209,15 +235,11 @@ export default function Room(props) {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
-    // Apply a subtle CSS filter to the WebGL canvas only (keeps CSS3D sharp)
+    // Remove any CSS filter from the WebGL canvas (no blur/contrast)
     try {
-      const filterStr =
-        (props && typeof props.renderFilter === "string" && props.renderFilter) ||
-        // legacy fallback if provided, else gentle film-like tone
-        ((props && typeof props.renderBlurPx === "number" && props.renderBlurPx > 0)
-          ? `blur(${props.renderBlurPx}px)`
-          : "contrast(1.03) saturate(0.92) brightness(0.98)");
-      renderer.domElement.style.filter = filterStr;
+      renderer.domElement.style.filter = "none";
+      // Allow UI (buttons) to capture clicks above the canvas
+      renderer.domElement.style.pointerEvents = "none";
     } catch {}
     rendererRef.current = renderer;
 
@@ -343,7 +365,7 @@ export default function Room(props) {
       }
     };
 
-    // Create overlay group and initial plane (behind model)
+    // Create overlay group and initial WebGL plane (behind model)
     {
       const group = new THREE.Object3D();
       const p = overlayPos || { x: -3.9, y: -1.8, z: -50.0 };
@@ -352,9 +374,8 @@ export default function Room(props) {
       scene.add(group);
       overlayGroupRef.current = group;
       const baseW = 1.6, baseH = 0.9;
-      const geo = new THREE.PlaneGeometry(baseW, baseH); // ~16:9
       overlayBaseSizeRef.current = { w: baseW, h: baseH };
-      // Pick initial texture from explicit list, numeric sequence, or explicit single image
+      // Pick initial texture URL
       let initUrl = null;
       const initialIndex = 0;
       if (Array.isArray(overlaySeqList) && overlaySeqList.length > 0) {
@@ -367,76 +388,146 @@ export default function Room(props) {
       } else {
         initUrl = overlayImageUrl;
       }
-      // Load initial texture with fallback to /2d/nemo.png
-      const loader = new THREE.TextureLoader();
-      let tex = null;
-      const loadUrl = (url, onDone) => {
-        if (!url) {
-          onDone(null);
-          return;
-        }
-        // Special white mode: render plain white plane
-        if (url === "__WHITE__") {
-          onDone("__WHITE__");
-          return;
-        }
-        loader.load(
-          url,
-          (t) => {
-            t.colorSpace = THREE.SRGBColorSpace;
-            t.needsUpdate = true;
-            onDone(t);
-          },
-          undefined,
-          () => {
-            // Fallback to nemo.png if provided url fails
-            loader.load(
-              "/2d/nemo.png",
-              (t2) => {
-                t2.colorSpace = THREE.SRGBColorSpace;
-                t2.needsUpdate = true;
-                onDone(t2);
-              },
-              undefined,
-              () => onDone(null)
-            );
-          }
-        );
-      };
-      // material placeholder; map set after load
+      // WebGL plane (respects depth)
+      const geo = new THREE.PlaneGeometry(baseW, baseH);
       const mat = new THREE.MeshBasicMaterial({
         map: null,
         color: 0xffffff,
-        transparent: true,
-        depthTest: false,     // ensure visibility over geometry
-        depthWrite: false,
+        transparent: false,
+        depthTest: true,
+        depthWrite: true,
         toneMapped: false,
         opacity: 1.0,
+        side: THREE.DoubleSide,
       });
+      mat.polygonOffset = true;
+      mat.polygonOffsetFactor = -1;
+      mat.polygonOffsetUnits = -1;
       const plane = new THREE.Mesh(geo, mat);
       plane.frustumCulled = false;
       const s = typeof overlayScale === "number" ? overlayScale : 1.2;
       plane.position.set(0, 0, 0);
-      plane.scale.setScalar(s);
-      // render last to appear on top of scene
-      plane.renderOrder = 999;
+      // Old good version: use scale as-is (no tiny factor)
+      plane.scale.set(s, s, 1);
       group.add(plane);
       overlayPlaneRef.current = plane;
       overlayMatRef.current = mat;
-      // kick off texture load
-      loadUrl(initUrl || "/2d/nemo.png", (loaded) => {
-        tex = loaded;
-        overlayTexRef.current = loaded;
-        if (loaded === "__WHITE__") {
-          mat.map = null;
-          mat.color = new THREE.Color(0xffffff);
-          mat.needsUpdate = true;
-        } else {
-          mat.map = loaded;
-          mat.color = new THREE.Color(0xffffff);
-          mat.needsUpdate = true;
-        }
+      // Apply initial texture
+      if (overlayDebugSolid) {
+        mat.map = null;
+        mat.color = new THREE.Color(overlayDebugColor || "#ff0000");
+        mat.depthTest = false;
+        mat.depthWrite = false;
+        mat.needsUpdate = true;
+        plane.renderOrder = 999;
+        try { console.log("[room3d] DEBUG solid color ->", overlayDebugColor); } catch {}
+      } else if (!initUrl || initUrl === "__WHITE__") {
+        mat.map = null;
+        mat.color = new THREE.Color(0xffffff);
+        mat.needsUpdate = true;
+        try { console.log("[room3d] init outside -> WHITE"); } catch {}
+      } else {
+        const loader = new THREE.TextureLoader();
+        loader.load(
+          initUrl,
+          (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.needsUpdate = true;
+            mat.map = tex;
+            mat.needsUpdate = true;
+            try { console.log("[room3d] init outside ->", initUrl); } catch {}
+          },
+          undefined,
+          () => { try { console.warn("[room3d] init outside load error", initUrl); } catch {} }
+        );
+      }
+    }
+
+    // Create simple 2D image plane (independent, safe)
+    if (enableImg2dPlane) {
+      const group = new THREE.Object3D();
+      const p = img2dPos || { x: -3.9, y: -1.8, z: -19.2 };
+      group.position.set(p.x || 0, p.y || 0, p.z || 0);
+      scene.add(group);
+      img2dGroupRef.current = group;
+
+      const geo = new THREE.PlaneGeometry(1.6, 0.9);
+      const mat = new THREE.MeshBasicMaterial({
+        map: null,
+        color: 0xffffff,
+        transparent: typeof img2dOpacity === "number" ? (img2dOpacity < 1) : false,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+        side: THREE.DoubleSide,
+        alphaTest: 0.001,
+        blending: THREE.NormalBlending,
+        opacity: typeof img2dOpacity === "number" ? img2dOpacity : 1.0,
       });
+      const plane = new THREE.Mesh(geo, mat);
+      plane.frustumCulled = false;
+      // Ensure the image plane is fully unlit and not affected by scene shadows
+      plane.castShadow = false;
+      plane.receiveShadow = false;
+      const s2 = typeof img2dScale === "number" ? img2dScale : 1.2;
+      plane.scale.setScalar(s2);
+      // ensure visibility over scene
+      plane.renderOrder = 999;
+      group.add(plane);
+      img2dPlaneRef.current = plane;
+      img2dMatRef.current = mat;
+
+      if (img2dUrl === "__WHITE__") {
+        mat.map = null;
+        mat.color = new THREE.Color(0xffffff);
+        mat.needsUpdate = true;
+      } else if (img2dUrl) {
+        const loader = new THREE.TextureLoader();
+        loader.load(
+          img2dUrl,
+          (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.flipY = false;
+            tex.needsUpdate = true;
+        mat.map = tex;
+        mat.color = new THREE.Color(0xffffff);
+            mat.needsUpdate = true;
+            try { console.log("[img2d] onLoad:", img2dUrl); } catch {}
+          },
+          undefined,
+          () => { try { console.warn("[img2d] load error:", img2dUrl); } catch {} }
+        );
+      }
+    }
+    // Create CSS3D window image anchored in 3D space (outside window)
+    if (enableCssWindow) {
+      const group = new THREE.Object3D();
+      const p = img2dPos || { x: -3.9, y: -1.8, z: -19.2 };
+      group.position.set(p.x || 0, p.y || 0, p.z || 0);
+      scene.add(group);
+      cssWindowGroupRef.current = group;
+
+      const el = document.createElement("img");
+      el.style.width = "480px";
+      el.style.height = "270px";
+      el.style.objectFit = "cover";
+      el.style.pointerEvents = "none";
+      el.draggable = false;
+      if (typeof img2dOpacity === "number") {
+        el.style.opacity = String(Math.max(0, Math.min(1, img2dOpacity)));
+      }
+      if (!img2dUrl || img2dUrl === "__WHITE__") {
+        el.src = "";
+        el.style.background = "#ffffff";
+      } else {
+        el.src = img2dUrl;
+      }
+      const cssObj = new CSS3DObject(el);
+      const s2 = typeof img2dScale === "number" ? img2dScale : 1.2;
+      cssObj.scale.set(s2, s2, 1);
+      group.add(cssObj);
+      cssWindowObjRef.current = cssObj;
+      cssWindowImgRef.current = el;
     }
 
     // Lofi film grain overlay (CSS-based, very lightweight)
@@ -465,6 +556,8 @@ export default function Room(props) {
     grain.style.zIndex = "2";
     grain.style.mixBlendMode = "multiply";
     grain.style.imageRendering = "pixelated";
+    // Temporarily disable grain overlay to rule out dimming/covering
+    grain.style.display = "none";
     const applyGrain = () => {
       grain.style.backgroundImage = `url('${makeGrainDataUrl()}')`;
       grain.style.backgroundRepeat = "repeat";
@@ -481,6 +574,8 @@ export default function Room(props) {
     vignette.style.pointerEvents = "none";
     vignette.style.zIndex = "3";
     vignette.style.background = "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.28) 100%)";
+    // Temporarily disable vignette overlay
+    vignette.style.display = "none";
     container.appendChild(vignette);
 
     // Model + lights
@@ -624,6 +719,18 @@ export default function Room(props) {
           cssScreenRef.current = cssObj;
           screenCenterLocalRef.current = centerLocal.clone();
         }
+
+        // Heuristic: collect window glass meshes by name
+        const candidates = [];
+        scene.traverse((o) => {
+          if (o && o.isMesh) {
+            const n = String(o.name || "").toLowerCase();
+            if (n.includes("glass") || n.includes("window_glass") || n.includes("window")) {
+              candidates.push(o);
+            }
+          }
+        });
+        windowGlassMeshesRef.current = candidates;
       }
     );
 
@@ -637,16 +744,22 @@ export default function Room(props) {
       raf = requestAnimationFrame(tick);
       controls.update();
       if (spotHelperRef.current) spotHelperRef.current.update();
-      // Billboard overlay to camera
-      if (overlayGroupRef.current && camera) {
-        overlayGroupRef.current.lookAt(camera.position);
-      }
+      // keep group orientation (no billboard), so it stays aligned with the window
       atmosphere.onFrame();
       // FPS meter
       {
         const now = performance.now();
         updateFps(now - (tick.prevTime || now));
         tick.prevTime = now;
+      }
+      // Optionally follow camera for overlay
+      if (overlayFollowCamera && overlayGroupRef.current && camera) {
+        const dist = typeof overlayFollowDist === "number" ? overlayFollowDist : 1.2;
+        const forward = new THREE.Vector3();
+        camera.getWorldDirection(forward);
+        const pos = camera.position.clone().add(forward.multiplyScalar(dist));
+        overlayGroupRef.current.position.copy(pos);
+        overlayGroupRef.current.lookAt(camera.position);
       }
       renderer.render(scene, camera);
       if (cssRendererRef.current) cssRendererRef.current.render(scene, camera);
@@ -675,10 +788,18 @@ export default function Room(props) {
           controlsRef.current.removeEventListener("change", handleControlsChange);
         } catch {}
       }
-      // Cleanup overlay plane
+      // Cleanup overlay objects
       if (overlayPlaneRef.current) {
         if (overlayPlaneRef.current.parent) overlayPlaneRef.current.parent.remove(overlayPlaneRef.current);
         overlayPlaneRef.current.geometry && overlayPlaneRef.current.geometry.dispose();
+        overlayPlaneRef.current = null;
+      }
+      if (overlayCssObjRef.current) {
+        try {
+          const obj = overlayCssObjRef.current;
+          if (obj.parent) obj.parent.remove(obj);
+        } catch {}
+        overlayCssObjRef.current = null;
       }
       if (overlayMatRef.current) {
         overlayMatRef.current.dispose();
@@ -704,19 +825,14 @@ export default function Room(props) {
   }, []);
 
   // Update blur dynamically if prop changes
-  const filterDepsKey = `${(props && props.renderFilter) || ""}|${(props && props.renderBlurPx) || ""}`;
+  const filterDepsKey = "force-none";
   useEffect(() => {
     const r = rendererRef.current;
     if (!r) return;
     const el = r.domElement;
     if (!el) return;
     try {
-      const filterStr =
-        (props && typeof props.renderFilter === "string" && props.renderFilter) ||
-        ((props && typeof props.renderBlurPx === "number" && props.renderBlurPx > 0)
-          ? `blur(${props.renderBlurPx}px)`
-          : "contrast(1.03) saturate(0.92) brightness(0.98)");
-      el.style.filter = filterStr;
+      el.style.filter = "none";
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterDepsKey]);
@@ -793,33 +909,49 @@ export default function Room(props) {
     }
     // Apply scale, with special handling for the last image (square)
     const applyScale = () => {
+      const cssObj = overlayCssObjRef.current;
       const plane = overlayPlaneRef.current;
-      const nextPlane = overlayNextPlaneRef.current;
       const s = typeof overlayScale === "number" ? overlayScale : 1;
       const base = overlayBaseSizeRef.current || { w: 1.6, h: 0.9 };
       const useList = Array.isArray(overlaySeqList) && overlaySeqList.length > 0;
       const listCount = useList ? overlaySeqList.length : (typeof overlaySeqCount === "number" ? overlaySeqCount : 0);
       const isLast = listCount > 0 && overlayIndexRef.current === listCount - 1;
-      if (isLast) {
-        const sx = s * (base.h / base.w); // make width==height visually
-        const sy = s;
-        if (plane) plane.scale.set(sx, sy, 1);
-        if (nextPlane) nextPlane.scale.set(sx, sy, 1);
-      } else {
-        if (plane) plane.scale.set(s, s, 1);
-        if (nextPlane) nextPlane.scale.set(s, s, 1);
-      }
+      const sx = isLast ? s * (base.h / base.w) : s;
+      const sy = s;
+      if (cssObj) cssObj.scale.set(sx, sy, 1);
+      if (plane) plane.scale.set(sx, sy, 1);
     };
     applyScale();
   }, [overlayVisible, overlayPos, overlayScale, overlayOffX, overlayOffY, overlayOffZ, overlaySeqList, overlaySeqCount]);
 
   // React to overlay image URL changes
   useEffect(() => {
+    // Prefer CSS3D outside image
+    const el = overlayDomRef.current;
+    if (el) {
+      if (!overlayImageUrl || overlayImageUrl === "__WHITE__") {
+        el.style.background = "#ffffff";
+      } else {
+        el.style.background = `url('${overlayImageUrl}') center / cover no-repeat`;
+      }
+      return;
+    }
     if (!overlayImageUrl) return;
     const currMat = overlayMatRef.current;
     if (!currMat) return;
+    const plane = overlayPlaneRef.current;
     let cancelled = false;
     const loader = new THREE.TextureLoader();
+    if (overlayDebugSolid) {
+      currMat.map = null;
+      currMat.color = new THREE.Color(overlayDebugColor || "#ff0000");
+      currMat.depthTest = false;
+      currMat.depthWrite = false;
+      currMat.needsUpdate = true;
+      if (plane) plane.renderOrder = 999;
+      try { console.log("[room3d] DEBUG solid color (effect)"); } catch {}
+      return;
+    }
     if (overlayImageUrl === "__WHITE__") {
       // switch to plain white
       if (overlayTexRef.current && overlayTexRef.current.dispose) {
@@ -828,8 +960,11 @@ export default function Room(props) {
       currMat.map = null;
       currMat.color = new THREE.Color(0xffffff);
       currMat.opacity = 1.0;
+      currMat.depthTest = false;
+      currMat.depthWrite = false;
       currMat.needsUpdate = true;
       overlayTexRef.current = null;
+      if (plane) plane.renderOrder = 999;
       return;
     }
     loader.load(
@@ -846,19 +981,221 @@ export default function Room(props) {
         }
         currMat.map = tex;
         currMat.opacity = 1.0;
+        currMat.depthTest = true;
+        currMat.depthWrite = true;
         currMat.needsUpdate = true;
         overlayTexRef.current = tex;
+        if (plane) plane.renderOrder = 0;
+        try { console.log("[room3d] outside tex set ->", overlayImageUrl); } catch {}
       },
       undefined,
-      () => {
-        // ignore load error; keep current image
-      }
+      () => { try { console.warn("[room3d] outside load error", overlayImageUrl); } catch {} }
     );
     return () => { cancelled = true; };
   }, [overlayImageUrl]);
 
+  // Safe 2D image plane: react to URL/pos/scale changes
+  useEffect(() => {
+    const mat = img2dMatRef.current;
+    if (!mat) return;
+    try { console.log("[img2d] url change ->", img2dUrl); } catch {}
+
+    // If we have window glass meshes, prefer direct texture replacement (best quality)
+    if (windowGlassMeshesRef.current && windowGlassMeshesRef.current.length > 0) {
+      const applyGlass = (url) => {
+        if (!windowGlassMeshesRef.current) return;
+        windowGlassMeshesRef.current.forEach((m) => {
+          // Build/update MeshBasicMaterial
+          const texToApply = url && url !== "__WHITE__"
+            ? new THREE.TextureLoader().load(url, (t) => {
+                t.colorSpace = THREE.SRGBColorSpace;
+                t.flipY = false;
+                t.needsUpdate = true;
+              })
+            : null;
+          const basic = new THREE.MeshBasicMaterial({
+            map: texToApply,
+            color: texToApply ? 0xffffff : 0xffffff,
+            transparent: true,
+            depthWrite: false,
+            toneMapped: false,
+            side: THREE.DoubleSide,
+          });
+          // slight offset to avoid z-fighting with frame
+          basic.polygonOffset = true;
+          basic.polygonOffsetFactor = -1;
+          basic.polygonOffsetUnits = -1;
+          m.material = basic;
+          m.material.needsUpdate = true;
+          m.castShadow = false;
+          m.receiveShadow = false;
+        });
+      };
+      applyGlass(img2dUrl);
+      // Hide auxiliary planes if glass is present
+      if (img2dGroupRef.current) img2dGroupRef.current.visible = false;
+      if (cssWindowGroupRef.current) cssWindowGroupRef.current.visible = false;
+      return;
+    }
+
+    // update CSS window image if present
+    if (cssWindowImgRef.current) {
+      const el = cssWindowImgRef.current;
+      if (!img2dUrl || img2dUrl === "__WHITE__") {
+        el.src = "";
+        el.style.background = "#ffffff";
+      } else if (el.src !== img2dUrl) {
+        el.style.background = "none";
+        el.src = img2dUrl;
+      }
+    }
+    if (!img2dUrl) {
+      mat.map = null;
+      mat.needsUpdate = true;
+      return;
+    }
+    if (img2dUrl === "__WHITE__") {
+      mat.map = null;
+      mat.color = new THREE.Color(0xffffff);
+      mat.needsUpdate = true;
+      return;
+    }
+    const loader = new THREE.TextureLoader();
+    let cancelled = false;
+    loader.load(
+      img2dUrl,
+      (tex) => {
+        if (cancelled) {
+          tex.dispose && tex.dispose();
+          return;
+        }
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+        tex.needsUpdate = true;
+        mat.map = tex;
+        mat.needsUpdate = true;
+        try { console.log("[img2d] applied"); } catch {}
+      },
+      undefined,
+      () => { try { console.warn("[img2d] load error:", img2dUrl); } catch {} }
+    );
+    return () => { cancelled = true; };
+  }, [img2dUrl]);
+
+  // Reactively create/update CSS3D window image when enabled (step >= 2)
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const cssR = cssRendererRef.current;
+    if (!scene || !cssR) return;
+    if (enableCssWindow) {
+      // create on demand
+      if (!cssWindowGroupRef.current) {
+        const group = new THREE.Object3D();
+        scene.add(group);
+        cssWindowGroupRef.current = group;
+        const el = document.createElement("img");
+        el.style.width = "480px";
+        el.style.height = "270px";
+        el.style.objectFit = "cover";
+        el.style.pointerEvents = "none";
+        el.draggable = false;
+        const cssObj = new CSS3DObject(el);
+        cssWindowObjRef.current = cssObj;
+        cssWindowImgRef.current = el;
+        group.add(cssObj);
+      }
+      // position/scale
+      const g = cssWindowGroupRef.current;
+      const cssObj = cssWindowObjRef.current;
+      if (g && img2dPos) {
+        const { x, y, z } = img2dPos;
+        g.position.set(x ?? g.position.x, y ?? g.position.y, z ?? g.position.z);
+      }
+      if (cssObj) {
+        const s2 = typeof img2dScale === "number" ? img2dScale : 1.2;
+        cssObj.scale.set(s2, s2, 1);
+      }
+      // image src
+      const el = cssWindowImgRef.current;
+      if (el) {
+        if (!img2dUrl || img2dUrl === "__WHITE__") {
+          el.src = "";
+          el.style.background = "#ffffff";
+        } else if (el.getAttribute("src") !== img2dUrl) {
+          el.style.background = "none";
+          el.setAttribute("src", img2dUrl);
+        }
+      }
+      // ensure visible
+      if (cssWindowGroupRef.current) cssWindowGroupRef.current.visible = true;
+    } else {
+      if (cssWindowGroupRef.current) cssWindowGroupRef.current.visible = false;
+    }
+  }, [
+    enableCssWindow,
+    img2dUrl,
+    img2dScale,
+    img2dPos && img2dPos.x,
+    img2dPos && img2dPos.y,
+    img2dPos && img2dPos.z,
+  ]);
+  useEffect(() => {
+    // CSS window group
+    if (cssWindowGroupRef.current && img2dPos) {
+      const g = cssWindowGroupRef.current;
+      const { x, y, z } = img2dPos;
+      g.position.set(x ?? g.position.x, y ?? g.position.y, z ?? g.position.z);
+    }
+    const group = img2dGroupRef.current;
+    if (!group || !img2dPos) return;
+    const { x, y, z } = img2dPos;
+    group.position.set(x ?? group.position.x, y ?? group.position.y, z ?? group.position.z);
+  }, [img2dPos && img2dPos.x, img2dPos && img2dPos.y, img2dPos && img2dPos.z]);
+  useEffect(() => {
+    if (cssWindowObjRef.current) {
+      const cssObj = cssWindowObjRef.current;
+      const s2 = typeof img2dScale === "number" ? img2dScale : 1.2;
+      cssObj.scale.set(s2, s2, 1);
+    }
+    const plane = img2dPlaneRef.current;
+    if (!plane) return;
+    const s2 = typeof img2dScale === "number" ? img2dScale : 1.2;
+    plane.scale.setScalar(s2);
+  }, [img2dScale]);
+
+  // Opacity updates for img2d (both WebGL plane and CSS3D image)
+  useEffect(() => {
+    if (img2dMatRef.current && typeof img2dOpacity === "number") {
+      const mat = img2dMatRef.current;
+      mat.transparent = img2dOpacity < 1;
+      mat.opacity = Math.max(0, Math.min(1, img2dOpacity));
+      mat.needsUpdate = true;
+    }
+    if (cssWindowImgRef.current && typeof img2dOpacity === "number") {
+      cssWindowImgRef.current.style.opacity = String(Math.max(0, Math.min(1, img2dOpacity)));
+    }
+  }, [img2dOpacity]);
+
   // Smoothly drive overlay opacity to a target [0..1]
   useEffect(() => {
+    const el = overlayDomRef.current;
+    if (el && overlayOpacityTarget !== undefined && overlayOpacityTarget !== null) {
+      const start = Number(el.style.opacity || 1);
+      const end = THREE.MathUtils.clamp(overlayOpacityTarget, 0, 1);
+      if (Math.abs(end - start) < 1e-6) return;
+      let raf = null;
+      const t0 = performance.now();
+      const dur = Math.max(100, overlayOpacityLerp || 900);
+      const step = (now) => {
+        const u = Math.min(1, (now - t0) / dur);
+        const s = u * u * (3 - 2 * u);
+        const a = start + (end - start) * s;
+        el.style.opacity = String(a);
+        if (u < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+      return () => raf && cancelAnimationFrame(raf);
+    }
     const mat = overlayMatRef.current;
     const matN = overlayNextMatRef.current;
     if (!mat && !matN) return;

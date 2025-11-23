@@ -137,33 +137,49 @@ export default function FixedRoomPage() {
   const bannerTimerRef = useRef<any>(null);
   // html2: white by default on step >= 2, and can switch to random genimg on user action
   const [html2Url, setHtml2Url] = useState<string | undefined>(undefined);
-  // Build a static list of public/genimg/** candidates
-  const overlayPool = useMemo(() => ([
-    // public/genimg/1
-    "/genimg/1/1-1.png", "/genimg/1/1-2.png", "/genimg/1/1-3.png", "/genimg/1/1-4.png",
-    // public/genimg/2
-    "/genimg/2/2-1.png", "/genimg/2/2-2.png", "/genimg/2/2-3.png", "/genimg/2/2-4.png",
-    // public/genimg/3
-    "/genimg/3/3-1.png", "/genimg/3/3-2.png", "/genimg/3/3-3.png", "/genimg/3/3-4.png", "/genimg/3/3-5.png",
-    "/genimg/3/3-6.png", "/genimg/3/3-7.png", "/genimg/3/3-8.png", "/genimg/3/3-9.png", "/genimg/3/3-10.png",
-    // public/genimg/4
-    "/genimg/4/4-1.png", "/genimg/4/4-2.png", "/genimg/4/4-3.png", "/genimg/4/4-4.png", "/genimg/4/4-5.png",
-    // public/genimg/5
-    "/genimg/5/5-1.png", "/genimg/5/5-2.png", "/genimg/5/5-3.png", "/genimg/5/5-4.png",
-  ]), []);
+  // Picker overlay (HTML, translucent) - appears after two Next
+  const pickerPool = useMemo(
+    () => [
+      { name: "SUNNY", url: "/weather/sunny.png" },
+      { name: "CLOUDY", url: "/weather/cloudy.png" },
+      { name: "RAINY", url: "/weather/rainy.png" },
+      { name: "SNOWY", url: "/weather/snowy.png" },
+      { name: "NIGHT", url: "/weather/night.png" },
+    ],
+    []
+  );
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerIndex, setPickerIndex] = useState(0);
+  const pickerStopTimer = useRef<any>(null);
+  // Build a static list of public/weather/** candidates
+  const weatherPool = useMemo(
+    () => [
+      "/weather/sunny.png",
+      "/weather/rain.png",
+      "/weather/snow.png",
+      "/weather/rainbow.png",
+      "/weather/smog.png",
+    ],
+    []
+  );
   useEffect(() => {
     if (step >= 2) {
-      // default white state first
-      setHtml2Url("__WHITE__");
+      if (!html2Url) setHtml2Url(weatherPool[0] || "/2d/nemo.png");
+      // keep picker closed for 3D-anchored HTML (CSS3D) mode
+      setPickerOpen(false);
     } else {
-      setHtml2Url(undefined);
+      if (html2Url) setHtml2Url(undefined);
+      setPickerOpen(false);
     }
-  }, [step, overlayPool]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
   useEffect(() => {
     if (bannerTimerRef.current) {
       clearTimeout(bannerTimerRef.current);
       bannerTimerRef.current = null;
     }
+    // debug: step change
+    try { console.log("[room] step ->", step); } catch {}
     // step 1: first Next
     if (step === 1) {
       setBannerText("당신이 좋아하는 시간대를 선택해주세요");
@@ -186,6 +202,8 @@ export default function FixedRoomPage() {
   // emit selected image to tv/sbm when updated (skip white)
   useEffect(() => {
     try {
+      // debug: html2Url change
+      if (step >= 2) console.log("[room] html2Url ->", html2Url);
       if (step >= 2 && html2Url && html2Url !== "__WHITE__") {
         const s = io({ path: "/api/socketio" }); // default namespace bridge
         s.emit("imageSelected", html2Url);
@@ -219,12 +237,18 @@ export default function FixedRoomPage() {
         initialHtmlOffZ={pHtmlOffZ}
         initialHtmlScaleMul={pHtmlScale}
         htmlVisible={step < 2}
-        /* show HTML (overlay plane) again after two Next presses (step >= 2) */
-        overlayVisible={step >= 2}
-        overlayPos={{ x: -3.9, y: -4.4, z: -18.6 }}
-        overlayScale={5.0}
+        /* remove legacy planes - use HTML picker instead */
+        overlayVisible={false}
+        overlayPos={{ x: -3.9, y: -1.8, z: -18.6 }}
+        overlayScale={1.2}
         overlayOpacityTarget={overlayTarget}
         overlayOpacityLerp={dynamicOverlayLerp}
+        enableImg2dPlane={false}
+        enableCssWindow={step >= 2}
+        img2dUrl={html2Url || "/weather/sunny.png"}
+        img2dPos={{ x: -4.9, y: -7.20, z: -30.0 }}
+        img2dScale={0.013}
+        img2dOpacity={0.32}
         /* html2: starts white; can switch to random genimg via button */
         overlayImageUrl={html2Url}
         overlaySeqList={[]}
@@ -241,6 +265,107 @@ export default function FixedRoomPage() {
         showHtmlSliders={false}
         staticView={true}
       />
+      {/* Picker Overlay */}
+      {pickerOpen && step >= 2 && (
+        <div
+          onWheel={(e) => {
+            const dir = e.deltaY > 0 ? 1 : -1;
+            setPickerIndex((idx) => {
+              const next = (idx + dir + pickerPool.length) % pickerPool.length;
+              return next;
+            });
+            if (pickerStopTimer.current) clearTimeout(pickerStopTimer.current);
+            pickerStopTimer.current = setTimeout(() => {
+              const chosen = pickerPool[pickerIndex]?.url;
+              if (chosen && chosen !== html2Url) setHtml2Url(chosen);
+            }, 500);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "grid",
+            placeItems: "center",
+            zIndex: 80,
+            pointerEvents: "auto",
+            background: "rgba(0,0,0,0.25)",
+            backdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width: "72vw",
+              height: "54vh",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,0.16)",
+              background: "rgba(20,22,28,0.35)",
+              backdropFilter: "blur(8px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
+              boxShadow: "0 20px 80px rgba(0,0,0,0.45)",
+            }}
+          >
+            {/* Carousel-like layout */}
+            <div
+              style={{
+                display: "flex",
+                gap: 24,
+                transform: "translateZ(0)",
+                willChange: "transform",
+              }}
+            >
+              {pickerPool.map((item, i) => {
+                const d = Math.min(
+                  Math.abs(i - pickerIndex),
+                  pickerPool.length - Math.abs(i - pickerIndex)
+                );
+                const scale = i === pickerIndex ? 1.0 : d === 1 ? 0.85 : 0.72;
+                const opacity = i === pickerIndex ? 1 : d === 1 ? 0.8 : 0.55;
+                return (
+                  <div
+                    key={item.url}
+                    onClick={() => {
+                      setPickerIndex(i);
+                      const chosen = item.url;
+                      if (chosen && chosen !== html2Url) setHtml2Url(chosen);
+                      // keep picker open for subsequent changes
+                    }}
+                    style={{
+                      width: "28vw",
+                      height: "40vh",
+                      borderRadius: 12,
+                      overflow: "hidden",
+                      cursor: "pointer",
+                      transform: `scale(${scale})`,
+                      transition: "transform 220ms ease, opacity 220ms ease",
+                      opacity,
+                      border: i === pickerIndex ? "1px solid rgba(255,255,255,0.5)" : "1px solid rgba(255,255,255,0.18)",
+                      background: "rgba(255,255,255,0.04)",
+                      boxShadow: i === pickerIndex ? "0 12px 40px rgba(0,0,0,0.5)" : "none",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <img
+                      src={item.url}
+                      alt={item.name}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                        filter: "contrast(1.05) saturate(1.02)",
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Top glassy banner modal */}
       {bannerVisible && bannerText && (
         <div
@@ -300,11 +425,11 @@ export default function FixedRoomPage() {
         {step >= 2 && (
           <button
             onClick={() => {
-              const i = Math.floor(Math.random() * overlayPool.length);
-              const url = overlayPool[i];
-              // cache-bust to force texture reload even if same file is picked
-              const bust = `${url}?t=${Date.now()}`;
-              setHtml2Url(bust);
+              const pool = weatherPool.length ? weatherPool : ["/2d/nemo.png"];
+              const i = Math.floor(Math.random() * pool.length);
+              const url = pool[i];
+              try { console.log("[room] look outside click ->", url); } catch {}
+              if (url !== html2Url) setHtml2Url(url);
             }}
             style={{
               padding: "10px 16px",
