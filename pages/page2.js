@@ -591,7 +591,7 @@ export default function Page2() {
       <LandingVideoCRT
         visible={show && !fadeVideo}
         videoRef={vidRef}
-        onEnded={() => goToStage(1)}
+        onEnded={() => goToStage(2)}
       />
       {/* Fade video to black overlay (after video ended) */}
       <FadeOverlay visible={fadeVideo} duration={600} zIndex={4} />
@@ -701,7 +701,7 @@ export default function Page2() {
         raise
       >
         <div style={{ lineHeight: 1.45 }}>
-          <div>당신이 원하는 휴식은 무엇인가요?</div>
+          <div>편안함이 느껴지는 무드를 찾아보세요</div>
           <div style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>모바일을 스크롤하여 찾아보세요</div>
         </div>
       </CenterPrompt>

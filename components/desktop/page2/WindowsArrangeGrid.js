@@ -132,61 +132,61 @@ export default function WindowsArrangeGrid({
             </div>
           );
         } else {
-          return (
-            <div
-              key={`grid_${w.id}`}
-              style={{
+        return (
+          <div
+            key={`grid_${w.id}`}
+            style={{
                 background: "rgba(231,233,238,0.56)",
                 border: "1px solid rgba(154,160,170,0.45)",
-                boxShadow: "0 8px 30px rgba(0,0,0,.25)",
+              boxShadow: "0 8px 30px rgba(0,0,0,.25)",
                 backdropFilter: "blur(8px) saturate(1.2)",
                 WebkitBackdropFilter: "blur(8px) saturate(1.2)",
                 borderRadius: 10,
-                pointerEvents: "none",
-                boxSizing: "border-box",
-                overflow: "hidden",
-                display: "grid",
-                gridTemplateRows: "26px 1fr",
-              }}
-            >
-              <div
-                style={{
-                  height: 26,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "0 8px",
+              pointerEvents: "none",
+              boxSizing: "border-box",
+              overflow: "hidden",
+              display: "grid",
+              gridTemplateRows: "26px 1fr",
+            }}
+          >
+            <div
+              style={{
+                height: 26,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0 8px",
                   background: "linear-gradient(to bottom, rgba(220,224,232,0.6), rgba(200,204,212,0.6))",
                   borderBottom: "1px solid rgba(154,160,170,0.45)",
-                  color: "#222",
-                  fontSize: 12,
-                  fontWeight: 700,
+                color: "#222",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              <span>{`window_${i + 1}`}</span>
+              <span style={{ letterSpacing: 2, fontWeight: 700 }}>— □ ×</span>
+            </div>
+            <div className="mono-halftone" style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", filter: moodStyle.filter }}>
+              <div style={{ position: "absolute", inset: 0, background: moodStyle.overlay, mixBlendMode: "multiply", pointerEvents: "none", zIndex: 2 }} />
+              <div
+                key={`${scrollKey}-${i}`}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  height: "200%",
+                  animation: pulseAnim,
                 }}
               >
-                <span>{`window_${i + 1}`}</span>
-                <span style={{ letterSpacing: 2, fontWeight: 700 }}>— □ ×</span>
-              </div>
-              <div className="mono-halftone" style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", filter: moodStyle.filter }}>
-                <div style={{ position: "absolute", inset: 0, background: moodStyle.overlay, mixBlendMode: "multiply", pointerEvents: "none", zIndex: 2 }} />
-                <div
-                  key={`${scrollKey}-${i}`}
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    right: 0,
-                    top: 0,
-                    height: "200%",
-                    animation: pulseAnim,
-                  }}
-                >
                   <div style={{ animation: `blurPulse ${1600 + (i % 4) * 260}ms ease-in-out infinite`, willChange: "filter" }}>
                     <img src={src} alt="" style={{ width: "100%", height: "50%", objectFit: "cover", display: "block", filter: imgFilter }} />
                     <img src={src} alt="" style={{ width: "100%", height: "50%", objectFit: "cover", display: "block", filter: imgFilter }} />
                   </div>
-                </div>
               </div>
             </div>
-          );
+          </div>
+        );
         }
       })}
       </div>

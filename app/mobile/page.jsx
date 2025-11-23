@@ -8,7 +8,6 @@ import SelectButton from "../components/common/SelectButton";
 import SelectionFlashOverlay from "../components/common/SelectionFlashOverlay";
 import FinalScreen from "../components/FinalScreen";
 import LevaGradientModal from "../components/common/LevaGradientModal";
-import MobileLandingHero from "../components/common/MobileLandingHero";
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 
@@ -26,7 +25,6 @@ export default function MobileHome() {
 		<main className="min-h-screen w-full" style={{ position: "relative" }}>
 			<ThreeBackground />
 			<IntroSequence />
-			<MobileLandingHero />
 			<SelectButton />
 			<ScrollInteraction />
 			<TopQuestion />
