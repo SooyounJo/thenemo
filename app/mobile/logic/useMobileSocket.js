@@ -5,6 +5,7 @@ import { io } from "socket.io-client";
 
 export default function useMobileSocket() {
 	const sockRef = useRef(null);
+	const firedRef = useRef(false);
 	useEffect(() => {
 		const s = io("/mobile", { path: "/api/socketio" });
 		sockRef.current = s;
@@ -13,6 +14,11 @@ export default function useMobileSocket() {
 			try {
 				const v = typeof e?.detail === "number" ? e.detail : 0;
 				s.emit("progress", Math.max(0, Math.min(1, v)));
+				// On first scroll/progress, trigger a single "next" for desktop
+				if (!firedRef.current && v > 0) {
+					firedRef.current = true;
+					s.emit("next");
+				}
 			} catch {}
 		}
 		window.addEventListener("bg-gradient:progress", onProgress);

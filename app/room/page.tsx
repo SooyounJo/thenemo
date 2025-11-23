@@ -50,6 +50,7 @@ export default function FixedRoomPage() {
   const [remoteProgress, setRemoteProgress] = useState<number | null>(null);
   const [remoteOverlay, setRemoteOverlay] = useState<number | null>(null);
   const [remoteOverlayIndex, setRemoteOverlayIndex] = useState<number | null>(null);
+  const [lookMsg, setLookMsg] = useState(false);
   // step 0로 돌아오면 랜딩 최종 구도(camVeryClose)로 복귀
   const stepTarget = step === 0 ? camVeryClose : steps[step];
   // Intro settle animation (once on mount: camVeryCloseUp -> camVeryClose)
@@ -63,7 +64,23 @@ export default function FixedRoomPage() {
   useEffect(() => {
     const socket = io("/desktop", { path: "/api/socketio" });
     socketRef.current = socket;
-    const onNext = () => setStep((s) => Math.min(steps.length - 1, s + 1));
+    const onNext = () => {
+      setStep((prev) => {
+        if (prev === 2) {
+          // Finalize weather selection: fade out and ask to look at the window.
+          setLookMsg(true);
+          // Emit previously selected gen image to TV/SBM
+          try {
+            const last = typeof window !== "undefined" ? (localStorage.getItem("nemo_last_image") || "") : "";
+            const s = io({ path: "/api/socketio" });
+            if (last) s.emit("imageSelected", last);
+            setTimeout(() => s.disconnect(), 600);
+          } catch {}
+          return 3;
+        }
+        return Math.min(steps.length - 1, prev + 1);
+      });
+    };
     const onPrev = () => setStep((s) => Math.max(0, s - 1));
     const onSetStep = (v: number) => {
       const nv = Math.max(0, Math.min(steps.length - 1, Math.floor(v)));
@@ -73,14 +90,7 @@ export default function FixedRoomPage() {
       if (typeof v === "number") {
         const clamped = Math.max(0, Math.min(1, v));
         setRemoteProgress(clamped);
-        // Map progress to step thresholds: evenly distribute across available steps
-        try {
-          const count = steps.length;
-          if (count > 0) {
-            const idx = Math.min(count - 1, Math.max(0, Math.floor(clamped * count)));
-            setStep((prev) => (prev !== idx ? idx : prev));
-          }
-        } catch {}
+        // In room, progress should not change steps. Navigation via next/prev only.
       }
     };
     const onOverlay = (v: number) => {
@@ -106,6 +116,22 @@ export default function FixedRoomPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [steps.length]);
+  // On entering room: auto-advance once, then enable mobile scroll after the motion
+  useEffect(() => {
+    const t1 = setTimeout(() => {
+      setStep((s) => Math.min(steps.length - 1, s + 1));
+      const t2 = setTimeout(() => {
+        try {
+          const s = io("/mobile", { path: "/api/socketio" });
+          s.emit("enableScroll");
+          setTimeout(() => s.disconnect(), 500);
+        } catch {}
+      }, 1400);
+      return () => clearTimeout(t2);
+    }, 1000);
+    return () => clearTimeout(t1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     // Apply the same placement through step 0, 1, and 2
     if (step === 0 || step === 1 || step === 2) {
@@ -199,19 +225,30 @@ export default function FixedRoomPage() {
       }
     };
   }, [step]);
-  // emit selected image to tv/sbm when updated (skip white)
+  // During step 2 (weather question), map mobile scroll progress to a weather image (HTML screen)
   useEffect(() => {
-    try {
-      // debug: html2Url change
-      if (step >= 2) console.log("[room] html2Url ->", html2Url);
-      if (step >= 2 && html2Url && html2Url !== "__WHITE__") {
-        const s = io({ path: "/api/socketio" }); // default namespace bridge
-        s.emit("imageSelected", html2Url);
-        setTimeout(() => s.disconnect(), 600);
-      }
-    } catch {}
+    if (step !== 2) return;
+    const pool = weatherPool;
+    if (!pool || pool.length === 0) return;
+    const p = typeof remoteProgress === "number" ? remoteProgress : 0;
+    const idx = Math.max(0, Math.min(pool.length - 1, Math.floor(p * pool.length)));
+    const url = pool[idx];
+    if (url && url !== html2Url) setHtml2Url(url);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, html2Url]);
+  }, [step, remoteProgress]);
+
+  // Derive desktop screen 2x2 images from mobile scroll when step === 1 (mood question)
+  const moodFolderIndex = useMemo(() => {
+    if (step !== 1) return null;
+    const p = typeof remoteProgress === "number" ? remoteProgress : 0;
+    const idx = Math.max(1, Math.min(9, Math.floor(p * 9) + 1));
+    return idx;
+  }, [step, remoteProgress]);
+  const screenGridImages = useMemo(() => {
+    if (!moodFolderIndex) return undefined;
+    const base = moodFolderIndex;
+    return [1, 2, 3, 4].map((i) => `/2d/${base}/${base}-${i}.png`);
+  }, [moodFolderIndex]);
 
   return (
     <>
@@ -264,6 +301,7 @@ export default function FixedRoomPage() {
         showPathSlider={step > 0}
         showHtmlSliders={false}
         staticView={true}
+        screenGridImages={screenGridImages}
       />
       {/* Picker Overlay */}
       {pickerOpen && step >= 2 && (
@@ -456,24 +494,22 @@ export default function FixedRoomPage() {
           zIndex: 60,
         }}
       />
-      {/* step 3: go to generator */}
-      {step === 3 && (
+      {/* step 3: fade-out and instruction to look at the window */}
+      {step === 3 && lookMsg && (
         <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }}>
-          <a
-            href="/generate"
+          <div
             style={{
-              pointerEvents: "auto",
+              pointerEvents: "none",
               padding: "12px 18px",
               borderRadius: 12,
               border: "1px solid #23262d",
-              background: "#111318",
+              background: "rgba(17,19,24,0.85)",
               color: "#e5e7eb",
-              textDecoration: "none",
-              fontSize: 14,
+              fontSize: 16,
             }}
           >
-            생성 페이지로 이동
-          </a>
+            이제 창문을 바라봐 주세요
+          </div>
         </div>
       )}
     </>

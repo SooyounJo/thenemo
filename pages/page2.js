@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/router";
+import { io } from "socket.io-client";
 import LandingVideoCRT from "@/components/desktop/page2/LandingVideoCRT";
 import WindowsScatter from "@/components/desktop/page2/WindowsScatter";
 import WindowsArrangeTransition from "@/components/desktop/page2/WindowsArrangeTransition";
@@ -397,6 +398,57 @@ export default function Page2() {
       setTransitionStart(false);
     }, 1000);
   }, [windows]);
+
+  // Socket.IO: listen to desktop namespace for mobile-driven controls
+  useEffect(() => {
+    const socket = io("/desktop", { path: "/api/socketio" });
+    const onNext = () => {
+      // emulate pressing EdgeNav Next
+      if (stage === 2 && !arranged) { triggerArrange(); return; }
+      if (stage === 2 && arranged) {
+        // same as EdgeNav Next when arranged: persist and go to /room
+        try {
+          const arr = Array.isArray(tileSources) && tileSources.length ? tileSources : ["/2d/nemo.png"];
+          const last = arr[0] || "/2d/nemo.png";
+          localStorage.setItem("nemo_last_image", last);
+          const grid = Array.from({ length: 9 }).map((_, i) => arr[i % arr.length]);
+          localStorage.setItem("nemo_grid_images", JSON.stringify(grid));
+        } catch {}
+        setClosing(true);
+        setTimeout(() => router.push("/room"), 700);
+        return;
+      }
+      goToStage(Math.min(2, stage + 1));
+    };
+    const onPrev = () => {
+      if (stage === 2 && arranged) setArranged(false);
+      else goToStage(Math.max(0, stage - 1));
+    };
+    const onProgress = (v) => {
+      const value = typeof v === "number" ? v : 0;
+      // Map progress [0..1] → folderIndex 1..9
+      const idx = Math.max(1, Math.min(9, Math.floor(value * 9) + 1));
+      setFolderIndex(idx);
+      // Ensure we are on windows stage and arranged 2x2 to visualize mood
+      if (stage < 2) {
+        goToStage(2);
+        // arrange on next tick
+        setTimeout(() => { if (!arranged) triggerArrange(); }, 100);
+      } else if (stage === 2 && !arranged) {
+        triggerArrange();
+      }
+    };
+    socket.on("next", onNext);
+    socket.on("prev", onPrev);
+    socket.on("progress", onProgress);
+    return () => {
+      socket.off("next", onNext);
+      socket.off("prev", onPrev);
+      socket.off("progress", onProgress);
+      socket.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, arranged, tileSources]);
 
   // update tile sources when folderIndex changes in arranged state
   useEffect(() => {

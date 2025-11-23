@@ -122,6 +122,8 @@ export default function Room(props) {
     overlaySeqList,
     // Optional external control of overlay index
     overlayIndex: overlayIndexProp,
+    // Optional: 2x2 screen grid images on the desktop monitor
+    screenGridImages,
   } = props || {};
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
@@ -131,6 +133,7 @@ export default function Room(props) {
   const spotHelperRef = useRef(null);
   const pinRef = useRef(null);
   const cssRendererRef = useRef(null);
+  const cssIframeRef = useRef(null);
   const sceneRef = useRef(null);
   const lightOpenInitial = true;
   // HTML screen placement refs/state
@@ -603,18 +606,24 @@ export default function Room(props) {
           }
           // Prepare grid images from localStorage to show user's last 4 (2x2) selection
           let gridImgs = [];
-          try {
-            const raw = localStorage.getItem("nemo_grid_images");
-            const arr = raw ? JSON.parse(raw) : null;
-            if (Array.isArray(arr) && arr.length >= 4) {
-              gridImgs = arr.slice(0, 4);
-            } else {
-              const last = localStorage.getItem("nemo_last_image");
-              if (last) gridImgs = Array.from({ length: 4 }).map(() => last);
+          // Prefer externally provided grid images
+          if (Array.isArray(screenGridImages) && screenGridImages.length > 0) {
+            gridImgs = screenGridImages.slice(0, 4);
+          } else {
+            // Fallback to localStorage
+            try {
+              const raw = localStorage.getItem("nemo_grid_images");
+              const arr = raw ? JSON.parse(raw) : null;
+              if (Array.isArray(arr) && arr.length >= 4) {
+                gridImgs = arr.slice(0, 4);
+              } else {
+                const last = localStorage.getItem("nemo_last_image");
+                if (last) gridImgs = Array.from({ length: 4 }).map(() => last);
+              }
+            } catch {}
+            if (gridImgs.length === 0) {
+              gridImgs = Array.from({ length: 4 }).map(() => "/2d/nemo.png");
             }
-          } catch {}
-          if (gridImgs.length === 0) {
-            gridImgs = Array.from({ length: 4 }).map(() => "/2d/nemo.png");
           }
           const iframe = document.createElement("iframe");
           iframe.setAttribute("title", "screen");
@@ -622,6 +631,8 @@ export default function Room(props) {
           iframe.width = "800";
           iframe.height = "500";
           iframe.style.pointerEvents = "none";
+          // Save iframe ref for live updates
+          try { cssIframeRef.current = iframe; } catch {}
           iframe.srcdoc = `
 <!doctype html>
 <html>
@@ -1175,6 +1186,25 @@ export default function Room(props) {
       cssWindowImgRef.current.style.opacity = String(Math.max(0, Math.min(1, img2dOpacity)));
     }
   }, [img2dOpacity]);
+
+  // Update screen 2x2 grid images live when provided
+  useEffect(() => {
+    if (!Array.isArray(screenGridImages) || screenGridImages.length === 0) return;
+    const iframe = cssIframeRef.current;
+    if (!iframe) return;
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) return;
+      const imgs = doc.querySelectorAll(".cell img");
+      for (let i = 0; i < imgs.length; i++) {
+        const el = imgs[i];
+        const url = screenGridImages[i] || screenGridImages[screenGridImages.length - 1];
+        if (el && typeof url === "string" && el.getAttribute("src") !== url) {
+          el.setAttribute("src", url);
+        }
+      }
+    } catch {}
+  }, [screenGridImages && screenGridImages.join("|")]);
 
   // Smoothly drive overlay opacity to a target [0..1]
   useEffect(() => {

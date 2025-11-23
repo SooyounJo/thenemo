@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { io } from "socket.io-client";
 
 export default function SelectButton() {
   const [show, setShow] = useState(false);
   const finalizedRef = useRef(false);
+  const sockRef = useRef(null);
 
   useEffect(() => {
+    // lightweight socket solely for "select -> next" signal
+    const s = io("/mobile", { path: "/api/socketio" });
+    sockRef.current = s;
     function onProgress(e) {
       if (finalizedRef.current) return;
       const v = (e).detail;
@@ -29,6 +34,8 @@ export default function SelectButton() {
       window.removeEventListener("bg-gradient:progress", onProgress);
       window.removeEventListener("bg-gradient:select", onSelect);
       window.removeEventListener("bg-gradient:final", onFinal);
+      try { s.disconnect(); } catch {}
+      sockRef.current = null;
     };
   }, []);
 
@@ -36,9 +43,12 @@ export default function SelectButton() {
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
       <button
-        onClick={() =>
-          window.dispatchEvent(new CustomEvent("bg-gradient:select"))
-        }
+        onClick={() => {
+          // local visual cue
+          window.dispatchEvent(new CustomEvent("bg-gradient:select"));
+          // advance desktop (arranged -> persist -> /room)
+          try { sockRef.current?.emit("next"); } catch {}
+        }}
         className="rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-5 py-2 text-sm text-white hover:bg-white/20 active:scale-[0.98] transition"
         aria-label="Fix current background colors"
       >
