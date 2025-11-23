@@ -1,34 +1,33 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useTvSocket } from "../../utils/socket/client";
-
-const PLACEHOLDERS = [
-  "/2d/nemo.png",
-  "/2d/mesy/monocity.png",
-  "/2d/mesy/monocity2.png",
-  "/2d/mesy/monocity3.png",
-];
 
 export default function TvScreen() {
   const [url, setUrl] = useState("");
-  const fallback = useMemo(() => {
-    const seed = Math.floor(Math.random() * PLACEHOLDERS.length);
-    return PLACEHOLDERS[seed];
-  }, []);
+  const [fade, setFade] = useState(false);
 
   useEffect(() => {
-    const last = typeof window !== "undefined" ? localStorage.getItem("nemo_last_image") : null;
-    if (last) setUrl(last);
+    // Start fully black; do not restore any previous image
+    setUrl("");
   }, []);
 
   useEffect(() => {
     const s = useTvSocket((u) => {
       if (typeof u === "string" && u) {
+        if (!u.startsWith("/genimg/")) return;
+        setFade(false);
         setUrl(u);
-        try {
-          localStorage.setItem("nemo_last_image", u);
-        } catch {}
+        setTimeout(() => setFade(true), 30);
       }
     });
+    // Fallback: also accept imageSelected only if it points to /genimg/*
+    try {
+      s.on("imageSelected", (u) => {
+        if (typeof u !== "string" || !u.startsWith("/genimg/")) return;
+        setFade(false);
+        setUrl(u);
+        setTimeout(() => setFade(true), 30);
+      });
+    } catch {}
     return () => {
       try {
         s.disconnect();
@@ -36,7 +35,7 @@ export default function TvScreen() {
     };
   }, []);
 
-  const display = url || fallback;
+  const display = url || "";
 
   return (
     <div
@@ -49,16 +48,20 @@ export default function TvScreen() {
         justifyContent: "center",
       }}
     >
-      <img
-        src={display}
-        alt="selected"
-        style={{
-          maxWidth: "100%",
-          maxHeight: "100%",
-          objectFit: "contain",
-          filter: "grayscale(0.1) contrast(1.05)",
-        }}
-      />
+      {display ? (
+        <img
+          src={display}
+          alt="selected"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            filter: "contrast(1.05)",
+            opacity: fade ? 1 : 0,
+            transition: "opacity 900ms ease",
+          }}
+        />
+      ) : null}
     </div>
   );
 }

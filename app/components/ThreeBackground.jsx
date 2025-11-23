@@ -627,8 +627,8 @@ export default function ThreeBackground() {
     window.addEventListener("bg-gradient:final", onFinal);
     function animate() {
       uniforms.u_time.value = (performance.now() - start) / 1000.0;
-      // smoother, slower approach to target progress
-      scrollDisplayed += (scrollTarget - scrollDisplayed) * 0.05;
+      // even slower approach to target progress for heavier feel
+      scrollDisplayed += (scrollTarget - scrollDisplayed) * 0.03;
       uniforms.u_scroll.value = scrollDisplayed;
       // Hard lock to initial palette on final screen
       if (isFinal) {

@@ -39,6 +39,17 @@ export default function handler(req, res) {
         const text = typeof value === "string" ? value : "";
         io.emit("healingText", text);
       });
+      // TV: show a specific image URL (e.g., from /genimg/{1-9}/{n}-{k}.png)
+      socket.on("tvShow", (url) => {
+        let u = typeof url === "string" && url ? url : "";
+        // Enforce public/genimg only
+        if (!u.startsWith("/genimg/")) {
+          const n = Math.floor(Math.random() * 9) + 1;
+          const k = Math.floor(Math.random() * 4) + 1;
+          u = `/genimg/${n}/${n}-${k}.png`;
+        }
+        try { io.of("/tv").emit("tvShow", u); } catch {}
+      });
       // Synchronized scroll enable/disable and selection lock for mood step
       socket.on("moodScroll:enable", () => io.emit("moodScroll:enable"));
       socket.on("moodScroll:disable", () => io.emit("moodScroll:disable"));
@@ -87,6 +98,15 @@ export default function handler(req, res) {
         socket.on("healingText", (value) => {
           const text = typeof value === "string" ? value : "";
           nsp.emit("healingText", text);
+        });
+        socket.on("tvShow", (url) => {
+          let u = typeof url === "string" && url ? url : "";
+          if (!u.startsWith("/genimg/")) {
+            const n = Math.floor(Math.random() * 9) + 1;
+            const k = Math.floor(Math.random() * 4) + 1;
+            u = `/genimg/${n}/${n}-${k}.png`;
+          }
+          try { io.of("/tv").emit("tvShow", u); } catch {}
         });
         // Namespaced versions as well
         socket.on("moodScroll:enable", () => nsp.emit("moodScroll:enable"));

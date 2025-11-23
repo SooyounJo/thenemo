@@ -68,11 +68,11 @@ export default function Page2() {
     setScrollPulseDir(dir);
     setScrollPulseKey((k) => k + 1);
   }, []);
-  const clearTimers = useCallback(() => {
+  function clearTimers() {
     if (autoTimerRef.current) { clearTimeout(autoTimerRef.current); autoTimerRef.current = null; }
     if (promptTimerRef.current) { clearTimeout(promptTimerRef.current); promptTimerRef.current = null; }
     if (questionTimerRef.current) { clearTimeout(questionTimerRef.current); questionTimerRef.current = null; }
-  }, []);
+  }
   const stopClarityAnim = useCallback(() => {
     if (clarityRafRef.current) { cancelAnimationFrame(clarityRafRef.current); clarityRafRef.current = null; }
   }, []);
@@ -427,6 +427,15 @@ export default function Page2() {
         try { socketRef.current?.emit("moodScroll:disable"); } catch {}
         setMoodLocked(true);
         moodLockedRef.current = true;
+        // Schedule TV show of a genimg after 2 seconds
+        try {
+          const n = Math.floor(Math.random() * 9) + 1;
+          const k = Math.floor(Math.random() * 4) + 1;
+          const tvUrl = `/genimg/${n}/${n}-${k}.png`;
+          setTimeout(() => {
+            try { socketRef.current?.emit("tvShow", tvUrl); } catch {}
+          }, 2000);
+        } catch {}
         setClosing(true);
         setTimeout(() => router.push("/room"), 700);
         return;

@@ -52,6 +52,9 @@ export default function FixedRoomPage() {
   const [remoteOverlayIndex, setRemoteOverlayIndex] = useState<number | null>(null);
   const [savedLightPath, setSavedLightPath] = useState<number | null>(null);
   const [lightPath, setLightPath] = useState<number>(0.538);
+  // Gate mobile controls during camera transitions
+  const [mobileLocked, setMobileLocked] = useState<boolean>(false);
+  const mobileLockedRef = useRef(false);
   const [lookMsg, setLookMsg] = useState(false);
   // step 0로 돌아오면 랜딩 최종 구도(camVeryClose)로 복귀
   const stepTarget = step === 0 ? camVeryClose : steps[step];
@@ -81,6 +84,7 @@ export default function FixedRoomPage() {
     const socket = io("/desktop", { path: "/api/socketio" });
     socketRef.current = socket;
     const onNext = () => {
+      if (mobileLockedRef.current) return;
       setStep((prev) => {
         if (prev === 2) {
           // Finalize weather selection: fade out and ask to look at the window.
@@ -92,17 +96,35 @@ export default function FixedRoomPage() {
             if (last) s.emit("imageSelected", last);
             setTimeout(() => s.disconnect(), 600);
           } catch {}
+          // Also instruct TV to show a /genimg image after 2 seconds (full-screen fade-in on TV)
+          try {
+            const n = Math.floor(Math.random() * 9) + 1;
+            const k = Math.floor(Math.random() * 4) + 1;
+            const tvUrl = `/genimg/${n}/${n}-${k}.png`;
+            setTimeout(() => {
+              try {
+                const s2 = io({ path: "/api/socketio" });
+                s2.emit("tvShow", tvUrl);
+                setTimeout(() => s2.disconnect(), 600);
+              } catch {}
+            }, 2000);
+          } catch {}
           return 3;
         }
         return Math.min(steps.length - 1, prev + 1);
       });
     };
-    const onPrev = () => setStep((s) => Math.max(0, s - 1));
+    const onPrev = () => {
+      if (mobileLockedRef.current) return;
+      setStep((s) => Math.max(0, s - 1));
+    };
     const onSetStep = (v: number) => {
+      if (mobileLockedRef.current) return;
       const nv = Math.max(0, Math.min(steps.length - 1, Math.floor(v)));
       setStep(nv);
     };
     const onProgress = (v: number) => {
+      if (mobileLockedRef.current) return;
       if (typeof v === "number") {
         const clamped = Math.max(0, Math.min(1, v));
         setRemoteProgress(clamped);
@@ -132,6 +154,24 @@ export default function FixedRoomPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [steps.length]);
+  // When entering zoom-out step (step === 1), lock mobile controls until camera lerp completes
+  const prevStepRef = useRef(step);
+  useEffect(() => {
+    const prev = prevStepRef.current;
+    prevStepRef.current = step;
+    if (prev !== step && step === 1) {
+      const lockMs = 1200 + 200; // cameraLerp + buffer
+      setMobileLocked(true);
+      mobileLockedRef.current = true;
+      try { socketRef.current?.emit("moodScroll:disable"); } catch {}
+      const t = setTimeout(() => {
+        setMobileLocked(false);
+        mobileLockedRef.current = false;
+        try { socketRef.current?.emit("moodScroll:enable"); } catch {}
+      }, lockMs);
+      return () => clearTimeout(t);
+    }
+  }, [step]);
   // On entering room: auto-advance once, then enable mobile scroll after the motion
   useEffect(() => {
     const t1 = setTimeout(() => {
@@ -178,7 +218,8 @@ export default function FixedRoomPage() {
     }
   }, [step, remoteProgress]);
   const progressTarget = (lightPath ?? defaultProgress) as any;
-  const dynamicProgressLerp = 900;
+  // Slow down light path interpolation for a heavier feel
+  const dynamicProgressLerp = 1800;
   const overlayTarget = (remoteOverlay !== null ? remoteOverlay : (step === 3 ? 0 : 1));
   const dynamicOverlayLerp = remoteOverlay !== null ? 180 : 1200;
 
