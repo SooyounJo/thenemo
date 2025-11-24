@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 export default function TopQuestion() {
   const [show, setShow] = useState(false);
   // Start with the former 3rd question as the first
-  const [text, setText] = useState("이 느껴지는 무드를 찾아보세요");
+  const [text, setText] = useState("편안함이 느껴지는 무드를 찾아보세요");
   const [stage, setStage] = useState(1);
   const currentStageRef = useRef(1);
   const finalizedRef = useRef(false); // prevent re-show after final
@@ -74,7 +74,7 @@ export default function TopQuestion() {
 
   if (!show) return null;
   return (
-    <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center">
+    <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center -translate-y-6">
       <div className="rounded-full bg-white/10 border border-white/25 text-white/95 px-5 py-2 text-sm backdrop-blur-md fade-in-1s text-center whitespace-nowrap">
         {text}
       </div>

@@ -41,7 +41,7 @@ export default function SelectButton() {
 
   if (!show) return null;
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-40">
       <button
         onClick={() => {
           // local visual cue
@@ -53,7 +53,7 @@ export default function SelectButton() {
             sockRef.current?.emit("next");
           } catch {}
         }}
-        className="rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-5 py-2 text-sm text-white hover:bg-white/20 active:scale-[0.98] transition"
+        className="rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-5 py-2 text-sm text-white hover:bg-white/20 active:scale-[0.98] transition select-button-glow"
         aria-label="Fix current background colors"
       >
         선택
