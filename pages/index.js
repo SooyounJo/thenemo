@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { io } from "socket.io-client";
 import QRCode from "qrcode";
-import FrameTypos from "../app/loding/components/FrameTypos";
+import MainFrameText from "../components/desktop/home/MainFrameText";
 import Head from "next/head";
 
 function TypingNemo() {
@@ -185,8 +185,8 @@ export default function Index() {
         />
       </div>
 
-      {/* Window-frame flowing typos */}
-      <FrameTypos gather={fxGather} explode={fxExplode} />
+      {/* Window-frame poetic texts (desktop main only) */}
+      <MainFrameText gather={fxGather} explode={fxExplode} />
 
       {/* Top-left typing NEMO */}
       <TypingNemo />
