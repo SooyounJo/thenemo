@@ -13,12 +13,27 @@ export default function TvScreen() {
   useEffect(() => {
     const s = useTvSocket((u) => {
       if (typeof u === "string" && u) {
-        if (!u.startsWith("/genimg/")) return;
+        let path = u;
+        // tolerate bare "5-3.png"
+        if (!path.startsWith("/genimg/") && /^[1-9]-\d+\.png$/i.test(path)) {
+          path = `/genimg/${path}`;
+        }
+        // tolerate folder style "/genimg/3/3-2.png" -> "/genimg/3-2.png"
+        const m = path.match(/^\/genimg\/([1-5])\/(\d+)-(\d+)\.png$/);
+        if (m && m[1] === m[2]) {
+          path = `/genimg/${m[1]}-${m[3]}.png`;
+        }
+        // allow only flat style under /genimg
+        if (!/^\/genimg\/[1-5]-\d+\.png$/.test(path)) return;
+        try { console.log("[tv] tvShow/imageSelected ->", path); } catch {}
         setFade(false);
-        setUrl(u);
+        setUrl(path);
         setTimeout(() => setFade(true), 30);
       }
     });
+    try {
+      s.emit("tvHello", { ts: Date.now() });
+    } catch {}
     // Fallback: also accept imageSelected only if it points to /genimg/*
     try {
       s.on("imageSelected", (u) => {

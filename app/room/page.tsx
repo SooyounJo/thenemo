@@ -91,26 +91,15 @@ export default function FixedRoomPage() {
         if (prev === 2) {
           // Finalize weather selection: fade out and ask to look at the window.
           setLookMsg(true);
-          // Emit previously selected gen image to TV/SBM
+          // Emit weather selection to server aggregator
           try {
-            const last = typeof window !== "undefined" ? (localStorage.getItem("nemo_last_image") || "") : "";
-            const s = io({ path: "/api/socketio" });
-            if (last) s.emit("imageSelected", last);
-            setTimeout(() => s.disconnect(), 600);
+            const weatherKeys = ["clear","cloudy","rainy","snowy","foggy","stormy"];
+            const w = weatherKeys[Math.max(0, Math.min(5, weatherIdx))] as any;
+            const s = io("/desktop", { path: "/api/socketio" });
+            s.emit("sel:weather", w);
+            setTimeout(() => s.disconnect(), 400);
           } catch {}
-          // Also instruct TV to show a /genimg image after 2 seconds (full-screen fade-in on TV)
-          try {
-            const n = Math.floor(Math.random() * 9) + 1;
-            const k = Math.floor(Math.random() * 4) + 1;
-            const tvUrl = `/genimg/${n}/${n}-${k}.png`;
-            setTimeout(() => {
-              try {
-                const s2 = io({ path: "/api/socketio" });
-                s2.emit("tvShow", tvUrl);
-                setTimeout(() => s2.disconnect(), 600);
-              } catch {}
-            }, 2000);
-          } catch {}
+          // TV 노출은 페이지2 최종 확정 시점에서만 수행 (room에서는 송신하지 않음)
           return 3;
         }
         return Math.min(steps.length - 1, prev + 1);
@@ -420,37 +409,7 @@ export default function FixedRoomPage() {
             다음
           </button>
         )}
-        {step >= 2 && (
-          <button
-            onClick={() => {
-              // Update room overlay image (kept as-is with weather), and also instruct TV to show a genimg
-              const pool = weatherPool.length ? weatherPool : ["/2d/nemo.png"];
-              const i = Math.floor(Math.random() * pool.length);
-              const url = pool[i];
-              try { console.log("[room] look outside click ->", url); } catch {}
-              if (url !== html2Url) setHtml2Url(url);
-              // Emit a random image from /genimg/{1..9}/{n}-{1..4}.png to TV
-              try {
-                const n = Math.floor(Math.random() * 9) + 1;
-                const k = Math.floor(Math.random() * 4) + 1;
-                const tvUrl = `/genimg/${n}/${n}-${k}.png`;
-                const s = io({ path: "/api/socketio" });
-                s.emit("tvShow", tvUrl);
-                setTimeout(() => s.disconnect(), 500);
-              } catch {}
-            }}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 10,
-              border: "1px solid #6b5bd4",
-              background: "#1a1f2e",
-              color: "#e5e7eb",
-              cursor: "pointer",
-            }}
-          >
-            밖을 보기
-          </button>
-        )}
+        {/* room 단계에서는 TV 송출 버튼을 노출하지 않음 */}
       </div>
       {/* Fade to black at step 3 */}
       <div
